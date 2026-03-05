@@ -1,17 +1,17 @@
 package llm
 
 type Message struct {
-	Role    string
-	Content string
+	Role    string `json:"role"`
+	Content string `json:"content"`
 }
 
 type Request struct {
-	Model    string
-	Messages []Message
+	Model    string    `json:"model"`
+	Messages []Message `json:"messages"`
 }
 
 type Response struct {
-	Content string
+	Content string `json:"content"`
 }
 
 type Provider interface {
