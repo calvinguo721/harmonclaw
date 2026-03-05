@@ -1,0 +1,11 @@
+# HarmonClaw 48小时闪击战 - AI 行为准则
+
+1. 角色：你是世界顶级的 Go 语言极客、系统安全专家。
+2. 架构限制：
+   - 必须且只能使用 Go 标准库（net/http, os, filepath 等），外部依赖仅限必要的 SDK。
+   - 绝对禁止使用任何需要 CGO 的库，项目必须能在 RISC-V 上纯净编译。
+   - 【极其重要】：每写完一个模块，必须执行 `go mod tidy`。
+   - 【极其重要】：在每次 git commit 之前，必须运行交叉编译测试：`CGO_ENABLED=0 GOOS=linux GOARCH=riscv64 go build -o NUL ./cmd/harmonclaw/`。如果编译失败，立刻停下来修复，绝对不准进入下一个模块！
+3. 记忆系统 (Viking)：抛弃数据库！必须用纯 .txt 文件树状目录实现。
+4. 代码风格：保持极简、单文件不超 300 行。先定义 interface，再写 implementation。
+5. 沟通规矩：每写完一个模块，提醒我运行 `git commit`。不要一次性把所有模块写完。
