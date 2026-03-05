@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"harmonclaw/llm"
+	"harmonclaw/sandbox"
 	"harmonclaw/viking"
 )
 
@@ -17,18 +18,20 @@ type Router interface {
 }
 
 type Server struct {
-	Addr   string
-	Mux    *http.ServeMux
-	LLM    llm.Provider
-	Viking viking.Memory
+	Addr    string
+	Mux     *http.ServeMux
+	LLM     llm.Provider
+	Viking  viking.Memory
+	Sandbox sandbox.Guard
 }
 
-func New(addr string, provider llm.Provider, mem viking.Memory) *Server {
+func New(addr string, provider llm.Provider, mem viking.Memory, guard sandbox.Guard) *Server {
 	s := &Server{
-		Addr:   addr,
-		Mux:    http.NewServeMux(),
-		LLM:    provider,
-		Viking: mem,
+		Addr:    addr,
+		Mux:     http.NewServeMux(),
+		LLM:     provider,
+		Viking:  mem,
+		Sandbox: guard,
 	}
 	s.routes()
 	return s
@@ -92,15 +95,54 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) handleSkills(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{"message": "TODO: sandbox intercept"})
+func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "failed to read request body")
+		return
+	}
+	defer r.Body.Close()
+
+	var req skillRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+
+	allowed, verdict := s.Sandbox.CheckSkill(req.SkillID)
+
+	if !allowed {
+		log.Printf("sandbox BLOCKED skill=%q verdict=%q", req.SkillID, verdict)
+		writeJSON(w, http.StatusForbidden, blockResponse{
+			Error:     "BLOCKED",
+			RiskLevel: "CRITICAL",
+			Reason:    verdict,
+		})
+		return
+	}
+
+	log.Printf("sandbox APPROVED skill=%q", req.SkillID)
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status": "executed",
+		"result": "All systems nominal",
+	})
 }
 
 func (s *Server) handleEngram(w http.ResponseWriter, _ *http.Request) {
 	http.Error(w, "Engram Bus: awaiting DeepSeek V4 activation", http.StatusNotImplemented)
 }
 
-// --- response types ---
+// --- request/response types ---
+
+type skillRequest struct {
+	SkillID string `json:"skill_id"`
+}
+
+type blockResponse struct {
+	Error     string `json:"error"`
+	RiskLevel string `json:"risk_level"`
+	Reason    string `json:"reason"`
+}
 
 type chatChoice struct {
 	Message llm.Message `json:"message"`

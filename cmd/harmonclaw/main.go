@@ -7,6 +7,7 @@ import (
 
 	"harmonclaw/gateway"
 	"harmonclaw/llm"
+	"harmonclaw/sandbox"
 	"harmonclaw/viking"
 )
 
@@ -23,7 +24,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	srv := gateway.New(":8080", provider, mem)
+	guard := sandbox.NewWhitelist()
+
+	srv := gateway.New(":8080", provider, mem, guard)
 	log.Printf("HarmonClaw listening on %s", srv.Addr)
 	if err := srv.ListenAndServe(); err != nil {
 		log.Fatalf("server died: %v", err)
