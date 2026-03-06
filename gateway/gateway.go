@@ -6,12 +6,15 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"harmonclaw/llm"
 	"harmonclaw/sandbox"
 	"harmonclaw/viking"
 )
+
+var SovereigntyMode = "airlock"
 
 type Router interface {
 	Register(mux *http.ServeMux)
@@ -23,15 +26,17 @@ type Server struct {
 	LLM     llm.Provider
 	Viking  viking.Memory
 	Sandbox sandbox.Guard
+	Ledger  viking.Ledger
 }
 
-func New(addr string, provider llm.Provider, mem viking.Memory, guard sandbox.Guard) *Server {
+func New(addr string, provider llm.Provider, mem viking.Memory, guard sandbox.Guard, ledger viking.Ledger) *Server {
 	s := &Server{
 		Addr:    addr,
 		Mux:     http.NewServeMux(),
 		LLM:     provider,
 		Viking:  mem,
 		Sandbox: guard,
+		Ledger:  ledger,
 	}
 	s.routes()
 	return s
@@ -42,10 +47,31 @@ func (s *Server) routes() {
 	s.Mux.HandleFunc("POST /v1/chat/completions", s.handleChat)
 	s.Mux.HandleFunc("POST /v1/skills/execute", s.handleSkills)
 	s.Mux.HandleFunc("POST /v1/engram/inject", s.handleEngram)
+	s.Mux.HandleFunc("GET /v1/ledger/latest", s.handleLedger)
+	s.Mux.HandleFunc("GET /v1/test/illegal", s.handleTestIllegal)
+
+	s.Mux.Handle("/", http.FileServer(http.Dir("web")))
 }
 
 func (s *Server) ListenAndServe() error {
-	return http.ListenAndServe(s.Addr, s.Mux)
+	return http.ListenAndServe(s.Addr, sovereigntyWall(s.Mux))
+}
+
+// --- sovereignty middleware ---
+
+func sovereigntyWall(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if SovereigntyMode == "shadow" && strings.HasPrefix(r.URL.Path, "/v1/") {
+			log.Printf("SOVEREIGNTY shadow-block: %s %s", r.Method, r.URL.Path)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "SOVEREIGNTY: shadow mode — all outbound API calls physically severed",
+			})
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // --- handlers ---
@@ -88,6 +114,14 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		log.Printf("viking save assistant msg: %v", err)
 	}
 
+	s.Ledger.Record(viking.LedgerEntry{
+		Timestamp: time.Now().Format(time.RFC3339),
+		Role:      "assistant",
+		Action:    "chat",
+		Tokens:    len(resp.Content) / 4,
+		Status:    "ok",
+	})
+
 	writeJSON(w, http.StatusOK, chatResponse{
 		Choices: []chatChoice{
 			{Message: llm.Message{Role: "assistant", Content: resp.Content}},
@@ -122,6 +156,14 @@ func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Printf("sandbox APPROVED skill=%q", req.SkillID)
+	s.Ledger.Record(viking.LedgerEntry{
+		Timestamp: time.Now().Format(time.RFC3339),
+		Role:      "system",
+		Action:    "skill:" + req.SkillID,
+		Tokens:    0,
+		Status:    "executed",
+	})
+
 	writeJSON(w, http.StatusOK, map[string]string{
 		"status": "executed",
 		"result": "All systems nominal",
@@ -130,6 +172,24 @@ func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleEngram(w http.ResponseWriter, _ *http.Request) {
 	http.Error(w, "Engram Bus: awaiting DeepSeek V4 activation", http.StatusNotImplemented)
+}
+
+func (s *Server) handleLedger(w http.ResponseWriter, _ *http.Request) {
+	entries, err := s.Ledger.Latest(10)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to read ledger")
+		return
+	}
+	writeJSON(w, http.StatusOK, entries)
+}
+
+func (s *Server) handleTestIllegal(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("X-HarmonClaw-Alert", "True")
+	writeJSON(w, http.StatusForbidden, map[string]string{
+		"error":      "ILLEGAL_ACCESS",
+		"risk_level": "CRITICAL",
+		"message":    "stress test triggered — this incident has been logged",
+	})
 }
 
 // --- request/response types ---

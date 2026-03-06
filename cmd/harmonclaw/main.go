@@ -24,10 +24,17 @@ func main() {
 		os.Exit(1)
 	}
 
+	ledger, err := viking.NewFileLedger()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
+		os.Exit(1)
+	}
+	defer ledger.Close()
+
 	guard := sandbox.NewWhitelist()
 
-	srv := gateway.New(":8080", provider, mem, guard)
-	log.Printf("HarmonClaw listening on %s", srv.Addr)
+	srv := gateway.New(":8080", provider, mem, guard, ledger)
+	log.Printf("HarmonClaw listening on %s  [sovereignty=%s]", srv.Addr, gateway.SovereigntyMode)
 	if err := srv.ListenAndServe(); err != nil {
 		log.Fatalf("server died: %v", err)
 	}
