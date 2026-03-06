@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 )
 
 // LedgerEntry 等保 7 字段审计格式
@@ -23,6 +24,7 @@ type LedgerEntry struct {
 type Ledger interface {
 	Record(entry LedgerEntry)
 	Latest(n int) ([]LedgerEntry, error)
+	TraceByActionID(actionID string) ([]LedgerEntry, error)
 	Close()
 }
 
@@ -111,4 +113,37 @@ func (l *FileLedger) Latest(n int) ([]LedgerEntry, error) {
 		entries = append(entries, e)
 	}
 	return entries, nil
+}
+
+func (l *FileLedger) TraceByActionID(actionID string) ([]LedgerEntry, error) {
+	data, err := os.ReadFile(l.fpath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []LedgerEntry{}, nil
+		}
+		return nil, fmt.Errorf("read ledger: %w", err)
+	}
+
+	lines := bytes.Split(data, []byte("\n"))
+	var entries []LedgerEntry
+	for _, line := range lines {
+		if len(line) == 0 {
+			continue
+		}
+		var e LedgerEntry
+		if err := json.Unmarshal(line, &e); err != nil {
+			continue
+		}
+		if e.ActionID == actionID {
+			entries = append(entries, e)
+		}
+	}
+	sortByTimestamp(entries)
+	return entries, nil
+}
+
+func sortByTimestamp(entries []LedgerEntry) {
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Timestamp < entries[j].Timestamp
+	})
 }

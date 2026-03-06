@@ -53,6 +53,7 @@ func (s *Server) routes() {
 	s.Mux.HandleFunc("POST /v1/skills/execute", s.handleSkills)
 	s.Mux.HandleFunc("POST /v1/engram/inject", s.handleEngram)
 	s.Mux.HandleFunc("GET /v1/ledger/latest", s.handleLedger)
+	s.Mux.HandleFunc("GET /v1/ledger/trace", s.handleLedgerTrace)
 	s.Mux.HandleFunc("GET /v1/test/illegal", s.handleTestIllegal)
 	s.Mux.Handle("GET /debug/vars", expvar.Handler())
 
@@ -308,8 +309,67 @@ func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, output)
 }
 
-func (s *Server) handleEngram(w http.ResponseWriter, _ *http.Request) {
-	http.Error(w, "Engram Bus: awaiting DeepSeek V4 activation", http.StatusNotImplemented)
+func (s *Server) handleEngram(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "failed to read request body")
+		return
+	}
+	defer r.Body.Close()
+
+	var req engramRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	if req.Text == "" {
+		writeError(w, http.StatusBadRequest, "text is required")
+		return
+	}
+	if req.Source != "user" && req.Source != "system" {
+		req.Source = "user"
+	}
+	if req.Classification == "" {
+		req.Classification = "public"
+	}
+	validClass := map[string]bool{"public": true, "internal": true, "sensitive": true, "secret": true}
+	if !validClass[req.Classification] {
+		req.Classification = "public"
+	}
+
+	actionID := GetActionID(r.Context())
+	if actionID == "" {
+		actionID = fmt.Sprintf("%d", time.Now().UnixMilli())
+	}
+	ts := time.Now().Format("20060102150405")
+	filename := ts + "_" + actionID + ".txt"
+	path, err := viking.EngramPath(filename)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "engram path: "+err.Error())
+		return
+	}
+
+	content := fmt.Sprintf("# source=%s\n# action_id=%s\n\n%s", req.Source, actionID, req.Text)
+	if _, err := viking.SafeWrite(path, []byte(content), req.Classification); err != nil {
+		writeError(w, http.StatusInternalServerError, "engram write: "+err.Error())
+		return
+	}
+
+	s.Ledger.Record(viking.LedgerEntry{
+		OperatorID: "default",
+		ActionType: "engram_inject",
+		Resource:   path,
+		Result:     "success",
+		ClientIP:   r.RemoteAddr,
+		Timestamp:  time.Now().Format(time.RFC3339),
+		ActionID:   actionID,
+	})
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status":    "ok",
+		"action_id": actionID,
+		"path":      path,
+	})
 }
 
 func (s *Server) handleLedger(w http.ResponseWriter, _ *http.Request) {
@@ -319,6 +379,23 @@ func (s *Server) handleLedger(w http.ResponseWriter, _ *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, entries)
+}
+
+func (s *Server) handleLedgerTrace(w http.ResponseWriter, r *http.Request) {
+	actionID := r.URL.Query().Get("action_id")
+	if actionID == "" {
+		writeError(w, http.StatusBadRequest, "action_id query parameter required")
+		return
+	}
+	entries, err := s.Ledger.TraceByActionID(actionID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to trace ledger")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"action_id": actionID,
+		"chain":     entries,
+	})
 }
 
 func (s *Server) handleTestIllegal(w http.ResponseWriter, _ *http.Request) {
@@ -331,6 +408,12 @@ func (s *Server) handleTestIllegal(w http.ResponseWriter, _ *http.Request) {
 }
 
 // --- request/response types ---
+
+type engramRequest struct {
+	Text           string `json:"text"`
+	Source         string `json:"source"`
+	Classification string `json:"classification"`
+}
 
 type skillRequest struct {
 	SkillID   string            `json:"skill_id"`

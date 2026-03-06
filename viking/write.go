@@ -3,6 +3,7 @@ package viking
 import (
 	"fmt"
 	"hash/crc32"
+	"log"
 	"os"
 	"path/filepath"
 )
@@ -58,6 +59,17 @@ func SafeWrite(path string, data []byte, classification string) (uint32, error) 
 	if err := os.Rename(tmpPath, path); err != nil {
 		os.Remove(tmpPath)
 		return 0, fmt.Errorf("rename %s -> %s: %w", tmpPath, path, err)
+	}
+
+	// Merkle audit: skip for audit_root.jsonl to avoid recursion
+	if filepath.Base(path) != "audit_root.jsonl" {
+		if root, err := ComputeRoot(); err == nil {
+			if err := AppendAuditRoot(root); err != nil {
+				log.Printf("viking: append audit root: %v", err)
+			}
+		} else {
+			log.Printf("viking: compute merkle root: %v", err)
+		}
 	}
 
 	return crc32.ChecksumIEEE(data), nil
