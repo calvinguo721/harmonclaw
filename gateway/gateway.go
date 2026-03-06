@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -55,6 +56,8 @@ func New(addr string, gov *governor.Governor, b *butler.Butler, a *architect.Arc
 
 func (s *Server) routes() {
 	s.Mux.HandleFunc("GET /v1/health", s.handleHealth)
+	s.Mux.HandleFunc("GET /v1/governor/sovereignty", s.handleSovereigntyGet)
+	s.Mux.HandleFunc("POST /v1/governor/sovereignty", s.handleSovereigntyPost)
 	s.Mux.HandleFunc("POST /v1/chat/completions", s.handleChat)
 	s.Mux.HandleFunc("POST /v1/skills/execute", s.handleSkills)
 	s.Mux.HandleFunc("POST /v1/engram/inject", s.handleEngram)
@@ -129,6 +132,49 @@ func sovereigntyWall(next http.Handler) http.Handler {
 
 // --- handlers ---
 
+func (s *Server) handleSovereigntyGet(w http.ResponseWriter, _ *http.Request) {
+	mode, domains := governor.GetSovereigntyMode()
+	writeJSON(w, http.StatusOK, map[string]any{
+		"mode":    mode,
+		"domains": domains,
+	})
+}
+
+func (s *Server) handleSovereigntyPost(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "failed to read request body")
+		return
+	}
+	defer r.Body.Close()
+	var req struct {
+		Mode    string   `json:"mode"`
+		Domains []string `json:"domains"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	if req.Mode == "" {
+		req.Mode = "airlock"
+	}
+	validModes := map[string]bool{"shadow": true, "airlock": true, "opensea": true}
+	if !validModes[req.Mode] {
+		writeError(w, http.StatusBadRequest, "invalid mode: "+req.Mode)
+		return
+	}
+	domains := req.Domains
+	if domains == nil {
+		domains = []string{}
+	}
+	governor.SetSovereigntyMode(req.Mode, domains)
+	SovereigntyMode = req.Mode
+	writeJSON(w, http.StatusOK, map[string]any{
+		"mode":    req.Mode,
+		"domains": domains,
+	})
+}
+
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	govStatus := s.Governor.Status()
 	butlerStatus := s.Butler.Status()
@@ -155,12 +201,43 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
+	actionID := GetActionID(r.Context())
 	userID := "default"
 	if !s.Governor.Quota().Allow(userID, "chat") {
 		writeError(w, http.StatusTooManyRequests, "quota exceeded")
 		return
 	}
 	defer s.Governor.Quota().Release(userID)
+
+	chatPolicy := s.findPolicy("chat")
+	if chatPolicy.SkillID != "" {
+		token := ""
+		if ah := r.Header.Get("Authorization"); strings.HasPrefix(ah, "Bearer ") {
+			token = strings.TrimPrefix(ah, "Bearer ")
+		}
+		if err := ironclaw.Enforce(chatPolicy, ironclaw.Request{
+			UserID:         userID,
+			SkillID:        "chat",
+			Token:          token,
+			Classification: "public",
+		}); err != nil {
+			s.Ledger.Record(viking.LedgerEntry{
+				OperatorID: "default",
+				ActionType: SovereigntyMode + ":chat",
+				Resource:   "chat",
+				Result:     "fail",
+				ClientIP:   r.RemoteAddr,
+				Timestamp:  time.Now().Format(time.RFC3339),
+				ActionID:   actionID,
+			})
+			writeJSON(w, http.StatusForbidden, blockResponse{
+				Error:     "IRONCLAW",
+				RiskLevel: "CRITICAL",
+				Reason:    err.Error(),
+			})
+			return
+		}
+	}
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -169,32 +246,36 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	var req llm.Request
-	if err := json.Unmarshal(body, &req); err != nil {
+	var chatReq llm.Request
+	if err := json.Unmarshal(body, &chatReq); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
 		return
 	}
 
-	resp, err := s.Butler.HandleChat(req)
+	if chatReq.Stream {
+		s.handleChatStream(w, r, actionID, chatReq)
+		return
+	}
+
+	resp, err := s.Butler.HandleChat(chatReq)
 	if err != nil {
 		s.Ledger.Record(viking.LedgerEntry{
 			OperatorID: "default",
-			ActionType: "chat",
+			ActionType: SovereigntyMode + ":llm_call",
 			Resource:   "chat",
 			Result:     "fail",
 			ClientIP:   r.RemoteAddr,
 			Timestamp:  time.Now().Format(time.RFC3339),
-			ActionID:   GetActionID(r.Context()),
+			ActionID:   actionID,
 		})
 		Log(r.Context(), "butler chat error: %v", err)
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
 
-	actionID := GetActionID(r.Context())
 	s.Ledger.Record(viking.LedgerEntry{
 		OperatorID: "default",
-		ActionType: "chat",
+		ActionType: SovereigntyMode + ":llm_call",
 		Resource:   "chat",
 		Result:     "success",
 		ClientIP:   r.RemoteAddr,
@@ -209,7 +290,62 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request, actionID string, chatReq llm.Request) {
+	ch, sessionID, err := s.Butler.HandleChatStream(chatReq)
+	if err != nil {
+		s.Ledger.Record(viking.LedgerEntry{
+			OperatorID: "default",
+			ActionType: SovereigntyMode + ":llm_call",
+			Resource:   "chat",
+			Result:     "fail",
+			ClientIP:   r.RemoteAddr,
+			Timestamp:  time.Now().Format(time.RFC3339),
+			ActionID:   actionID,
+		})
+		Log(r.Context(), "butler chat stream error: %v", err)
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.WriteHeader(http.StatusOK)
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+
+	var fullContent strings.Builder
+	for chunk := range ch {
+		fullContent.WriteString(chunk)
+		evt := map[string]any{
+			"action_id": actionID,
+			"choices":   []any{map[string]any{"delta": map[string]any{"content": chunk}}},
+		}
+		evtBytes, _ := json.Marshal(evt)
+		io.WriteString(w, "data: ")
+		w.Write(evtBytes)
+		io.WriteString(w, "\n\n")
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	}
+
+	s.Butler.SaveStreamedResponse("default", sessionID, fullContent.String())
+	s.Ledger.Record(viking.LedgerEntry{
+		OperatorID: "default",
+		ActionType: SovereigntyMode + ":llm_call",
+		Resource:   "chat",
+		Result:     "success",
+		ClientIP:   r.RemoteAddr,
+		Timestamp:  time.Now().Format(time.RFC3339),
+		ActionID:   actionID,
+	})
+	io.WriteString(w, "data: [DONE]\n\n")
+}
+
 func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
+	actionID := GetActionID(r.Context())
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "failed to read request body")
@@ -256,12 +392,12 @@ func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
 		}); err != nil {
 			s.Ledger.Record(viking.LedgerEntry{
 				OperatorID: "default",
-				ActionType: "skill_exec",
+				ActionType: SovereigntyMode + ":skill_exec",
 				Resource:   skillID,
 				Result:     "fail",
 				ClientIP:   r.RemoteAddr,
 				Timestamp:  time.Now().Format(time.RFC3339),
-				ActionID:   GetActionID(r.Context()),
+				ActionID:   actionID,
 			})
 			writeJSON(w, http.StatusForbidden, blockResponse{
 				Error:     "IRONCLAW",
@@ -270,43 +406,6 @@ func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-	}
-
-	check := s.Architect.HandleSkill(skillID)
-	if !check.Allowed {
-		s.Ledger.Record(viking.LedgerEntry{
-			OperatorID: "default",
-			ActionType: "skill_exec",
-			Resource:   skillID,
-			Result:     "fail",
-			ClientIP:   r.RemoteAddr,
-			Timestamp:  time.Now().Format(time.RFC3339),
-			ActionID:   GetActionID(r.Context()),
-		})
-		writeJSON(w, http.StatusForbidden, blockResponse{
-			Error:     "BLOCKED",
-			RiskLevel: "CRITICAL",
-			Reason:    check.Verdict,
-		})
-		return
-	}
-
-	sk, ok := skills.Registry[skillID]
-	if !ok {
-		s.Ledger.Record(viking.LedgerEntry{
-			OperatorID: "default",
-			ActionType: "skill_exec",
-			Resource:   skillID,
-			Result:     "success",
-			ClientIP:   r.RemoteAddr,
-			Timestamp:  time.Now().Format(time.RFC3339),
-			ActionID:   GetActionID(r.Context()),
-		})
-		writeJSON(w, http.StatusOK, map[string]string{
-			"status": check.Status,
-			"result": check.Result,
-		})
-		return
 	}
 
 	text := req.Text
@@ -324,7 +423,7 @@ func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
 	}
 	args["sovereignty"] = SovereigntyMode
 	input := skills.SkillInput{
-		TraceID:   GetActionID(r.Context()),
+		TraceID:   actionID,
 		Text:      text,
 		Args:      args,
 		LocalOnly: true,
@@ -332,7 +431,25 @@ func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
 	if input.TraceID == "" {
 		input.TraceID = fmt.Sprintf("%d", time.Now().UnixMilli())
 	}
-	output := sk.Execute(input)
+
+	output, err := s.Architect.ExecuteSkill(skillID, input)
+	if err != nil {
+		if err == architect.ErrBackpressure {
+			writeError(w, http.StatusServiceUnavailable, "skill execution backlogged")
+			return
+		}
+		s.Ledger.Record(viking.LedgerEntry{
+			OperatorID: "default",
+			ActionType: SovereigntyMode + ":skill_exec",
+			Resource:   skillID,
+			Result:     "fail",
+			ClientIP:   r.RemoteAddr,
+			Timestamp:  time.Now().Format(time.RFC3339),
+			ActionID:   actionID,
+		})
+		writeJSON(w, http.StatusInternalServerError, output)
+		return
+	}
 
 	result := "fail"
 	if output.Status == "ok" {
@@ -340,12 +457,12 @@ func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
 	}
 	s.Ledger.Record(viking.LedgerEntry{
 		OperatorID: "default",
-		ActionType: "skill_exec",
+		ActionType: SovereigntyMode + ":skill_exec",
 		Resource:   skillID,
 		Result:     result,
 		ClientIP:   r.RemoteAddr,
 		Timestamp:  time.Now().Format(time.RFC3339),
-		ActionID:   GetActionID(r.Context()),
+		ActionID:   actionID,
 	})
 	writeJSON(w, http.StatusOK, output)
 }
@@ -413,8 +530,14 @@ func (s *Server) handleEngram(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) handleLedger(w http.ResponseWriter, _ *http.Request) {
-	entries, err := s.Ledger.Latest(10)
+func (s *Server) handleLedger(w http.ResponseWriter, r *http.Request) {
+	limit := 20
+	if n := r.URL.Query().Get("limit"); n != "" {
+		if v, err := strconv.Atoi(n); err == nil && v > 0 && v <= 200 {
+			limit = v
+		}
+	}
+	entries, err := s.Ledger.Latest(limit)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to read ledger")
 		return

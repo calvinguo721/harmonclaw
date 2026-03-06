@@ -21,6 +21,7 @@ var (
 	clientDomains  []string
 	clientMode     string
 	clientInitDone bool
+	clientMu       sync.RWMutex
 )
 
 func InitSecureClient(ledger viking.Ledger, mode string, allowedDomains []string) {
@@ -37,6 +38,23 @@ func InitSecureClient(ledger viking.Ledger, mode string, allowedDomains []string
 	})
 }
 
+// SetSovereigntyMode updates mode and whitelist at runtime.
+func SetSovereigntyMode(mode string, allowedDomains []string) {
+	clientMu.Lock()
+	defer clientMu.Unlock()
+	clientMode = mode
+	clientDomains = allowedDomains
+}
+
+// GetSovereigntyMode returns current mode and whitelist.
+func GetSovereigntyMode() (mode string, domains []string) {
+	clientMu.RLock()
+	defer clientMu.RUnlock()
+	domains = make([]string, len(clientDomains))
+	copy(domains, clientDomains)
+	return clientMode, domains
+}
+
 func SecureClient() *http.Client {
 	if !clientInitDone {
 		secureClientVal = &http.Client{Transport: http.DefaultTransport}
@@ -50,14 +68,17 @@ type sovereigntyTransport struct {
 
 func (t *sovereigntyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if clientLedger != nil && req.URL != nil {
+		clientMu.RLock()
+		mode, domains := clientMode, clientDomains
+		clientMu.RUnlock()
 		host := req.URL.Host
 		if idx := strings.Index(host, ":"); idx >= 0 {
 			host = host[:idx]
 		}
-		if !domainAllowed(host) {
+		if !domainAllowedLocked(host, mode, domains) {
 			clientLedger.Record(viking.LedgerEntry{
 				OperatorID: "governor",
-				ActionType: "outbound_blocked",
+				ActionType: mode + ":outbound_blocked",
 				Resource:   host,
 				Result:     "fail",
 				ClientIP:   "",
@@ -73,18 +94,18 @@ func (t *sovereigntyTransport) RoundTrip(req *http.Request) (*http.Response, err
 	return t.next.RoundTrip(req)
 }
 
-func domainAllowed(host string) bool {
-	if clientMode == "opensea" {
-		for _, d := range clientDomains {
+func domainAllowedLocked(host, mode string, domains []string) bool {
+	if mode == "opensea" {
+		for _, d := range domains {
 			if d == "*" {
 				return true
 			}
 		}
 	}
-	if clientMode == "shadow" {
+	if mode == "shadow" {
 		return false
 	}
-	for _, d := range clientDomains {
+	for _, d := range domains {
 		if d == "*" {
 			return true
 		}

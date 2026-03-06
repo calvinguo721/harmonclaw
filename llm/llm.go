@@ -9,6 +9,7 @@ type Message struct {
 type Request struct {
 	Model    string    `json:"model"`
 	Messages []Message `json:"messages"`
+	Stream   bool      `json:"stream"`
 }
 
 type Response struct {
@@ -17,4 +18,5 @@ type Response struct {
 
 type Provider interface {
 	Chat(req Request) (Response, error)
+	ChatStream(req Request) (<-chan string, error)
 }

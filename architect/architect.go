@@ -2,7 +2,10 @@
 package architect
 
 import (
+	"context"
+	"encoding/json"
 	"log"
+	"runtime"
 	"sync"
 	"time"
 
@@ -63,12 +66,53 @@ func (a *Architect) Pulse() {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 	for range ticker.C {
+		payload := map[string]any{
+			"status":     a.Status(),
+			"goroutines": runtime.NumGoroutine(),
+			"queue_len":  a.pool.QueueLen(),
+		}
 		bus.Send(bus.Message{
 			From:    bus.Architect,
 			Type:    "pulse",
-			Payload: a.Status(),
+			Payload: payload,
 		})
 	}
+}
+
+// ExecuteSkill runs a skill via WorkerPool and RunSandboxed.
+func (a *Architect) ExecuteSkill(skillID string, input skills.SkillInput) (skills.SkillOutput, error) {
+	check := a.HandleSkill(skillID)
+	if !check.Allowed {
+		return skills.SkillOutput{
+			TraceID: input.TraceID,
+			Status:  "error",
+			Error:   check.Verdict,
+		}, nil
+	}
+	sk, ok := skills.Registry[skillID]
+	if !ok {
+		data, _ := json.Marshal(map[string]string{"status": check.Status})
+		return skills.SkillOutput{
+			TraceID: input.TraceID,
+			Status:  "ok",
+			Data:    data,
+		}, nil
+	}
+	resultCh := make(chan skills.SkillOutput, 1)
+	task := func() {
+		out := skills.RunSandboxed(context.Background(), input.TraceID, func() skills.SkillOutput {
+			return sk.Execute(input)
+		})
+		resultCh <- out
+	}
+	if err := a.pool.Submit(task); err != nil {
+		return skills.SkillOutput{
+			TraceID: input.TraceID,
+			Status:  "error",
+			Error:   err.Error(),
+		}, err
+	}
+	return <-resultCh, nil
 }
 
 func (a *Architect) RegisterSkill(name string, skill skills.Skill) {

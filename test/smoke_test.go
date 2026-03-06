@@ -189,6 +189,69 @@ func TestSmoke(t *testing.T) {
 		}
 	})
 
+	t.Run("ledger_limit", func(t *testing.T) {
+		resp, err := http.Get(baseURL + "/v1/ledger/latest?limit=5")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			t.Errorf("ledger limit: want 200, got %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("sovereignty_get", func(t *testing.T) {
+		resp, err := http.Get(baseURL + "/v1/governor/sovereignty")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			t.Errorf("sovereignty GET: want 200, got %d", resp.StatusCode)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		var d map[string]any
+		if json.Unmarshal(body, &d) != nil {
+			t.Fatal("sovereignty: invalid JSON")
+		}
+		if d["mode"] == nil || d["domains"] == nil {
+			t.Error("sovereignty: missing mode or domains")
+		}
+	})
+
+	t.Run("sovereignty_post", func(t *testing.T) {
+		body := []byte(`{"mode":"airlock","domains":["api.deepseek.com"]}`)
+		resp, err := http.Post(baseURL+"/v1/governor/sovereignty", "application/json", bytes.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			t.Errorf("sovereignty POST: want 200, got %d: %s", resp.StatusCode, mustRead(resp.Body))
+		}
+	})
+
+	t.Run("chat_sse", func(t *testing.T) {
+		body := []byte(`{"messages":[{"role":"user","content":"hi"}],"stream":true}`)
+		resp, err := http.Post(baseURL+"/v1/chat/completions", "application/json", bytes.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			t.Errorf("chat SSE: want 200, got %d", resp.StatusCode)
+		}
+		if ct := resp.Header.Get("Content-Type"); ct != "text/event-stream" {
+			t.Errorf("chat SSE: want text/event-stream, got %s", ct)
+		}
+		// consume at least one chunk
+		buf := make([]byte, 256)
+		n, _ := resp.Body.Read(buf)
+		if n == 0 {
+			t.Error("chat SSE: expected at least one byte")
+		}
+	})
+
 	t.Run("debug_vars", func(t *testing.T) {
 		resp, err := http.Get(baseURL + "/debug/vars")
 		if err != nil {

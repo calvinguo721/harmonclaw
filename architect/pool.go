@@ -93,3 +93,8 @@ func (p *WorkerPool) Submit(task Task) error {
 		return ErrBackpressure
 	}
 }
+
+// QueueLen returns the number of tasks waiting in the queue.
+func (p *WorkerPool) QueueLen() int {
+	return len(p.tasks)
+}

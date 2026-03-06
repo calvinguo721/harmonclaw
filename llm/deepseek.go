@@ -2,12 +2,14 @@
 package llm
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"strings"
 
 	"harmonclaw/governor"
 )
@@ -100,4 +102,66 @@ func (c *DeepSeekClient) Chat(req Request) (Response, error) {
 	}
 
 	return Response{Content: apiResp.Choices[0].Message.Content}, nil
+}
+
+func (c *DeepSeekClient) ChatStream(req Request) (<-chan string, error) {
+	if req.Model == "" {
+		req.Model = "deepseek-chat"
+	}
+	body := map[string]any{
+		"model":   req.Model,
+		"messages": req.Messages,
+		"stream":  true,
+	}
+	bodyBytes, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("marshal request: %w", err)
+	}
+	httpReq, err := http.NewRequest(http.MethodPost, c.endpoint, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+c.apiKey)
+
+	httpResp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("send request: %w", err)
+	}
+	if httpResp.StatusCode != http.StatusOK {
+		httpResp.Body.Close()
+		return nil, fmt.Errorf("api returned status %d", httpResp.StatusCode)
+	}
+
+	ch := make(chan string, 8)
+	go func() {
+		defer httpResp.Body.Close()
+		defer close(ch)
+		sc := bufio.NewScanner(httpResp.Body)
+		sc.Buffer(nil, 64*1024)
+		for sc.Scan() {
+			line := sc.Text()
+			if !strings.HasPrefix(line, "data: ") {
+				continue
+			}
+			data := strings.TrimPrefix(line, "data: ")
+			if data == "[DONE]" {
+				return
+			}
+			var evt struct {
+				Choices []struct {
+					Delta struct {
+						Content string `json:"content"`
+					} `json:"delta"`
+				} `json:"choices"`
+			}
+			if json.Unmarshal([]byte(data), &evt) != nil {
+				continue
+			}
+			if len(evt.Choices) > 0 && evt.Choices[0].Delta.Content != "" {
+				ch <- evt.Choices[0].Delta.Content
+			}
+		}
+	}()
+	return ch, nil
 }

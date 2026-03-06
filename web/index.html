@@ -196,27 +196,39 @@ $('#btnToken').addEventListener('click',async()=>{
   }catch(e){alert(e.message)}
 });
 
-/* Sovereignty (UI only) */
+/* Sovereignty: POST to backend */
+async function setSovereignty(mode){
+  try{
+    const r=await fetch('/v1/governor/sovereignty',{
+      method:'POST',headers:authHeaders(),
+      body:JSON.stringify({mode})
+    });
+    const d=await r.json();
+    if(r.ok){document.documentElement.setAttribute('data-mode',mode);sMode.textContent=mode.toUpperCase()}
+    else{alert(d.error||'Failed')}
+  }catch(e){alert(e.message)}
+}
 $$('.sv').forEach(b=>b.addEventListener('click',()=>{
   $$('.sv').forEach(x=>x.classList.remove('active'));
   b.classList.add('active');
-  const m=b.dataset.m;
-  document.documentElement.setAttribute('data-mode',m);
-  sMode.textContent=m.toUpperCase();
+  setSovereignty(b.dataset.m);
 }));
 
-/* Health + Version */
+/* Health + Version + Sovereignty sync */
 async function refreshHealth(){
   try{
-    const r=await fetch('/v1/health',{headers:authHeaders()});
-    const d=await r.json();
-    const ok=d.overall==='healthy';
+    const [h,s]=await Promise.all([
+      fetch('/v1/health',{headers:authHeaders()}).then(r=>r.json()),
+      fetch('/v1/governor/sovereignty',{headers:authHeaders()}).then(r=>r.json())
+    ]);
+    const ok=h.overall==='healthy';
     healthDot.className='health-dot '+(ok?'ok':'err');
     sHealth.textContent=ok?'OK':'DEGRADED';
-    version.textContent=d.version||'—';
-    if(Array.isArray(d.architect?.registered_skills)){
-      renderSkills(d.architect.registered_skills);
+    version.textContent=h.version||'—';
+    if(s.mode){document.documentElement.setAttribute('data-mode',s.mode);sMode.textContent=s.mode.toUpperCase();
+      $$('.sv').forEach(x=>{x.classList.toggle('active',x.dataset.m===s.mode)});
     }
+    if(Array.isArray(h.architect?.registered_skills)){renderSkills(h.architect.registered_skills)}
   }catch(_){healthDot.className='health-dot err';sHealth.textContent='OFF'}
 }
 function renderSkills(skills){
@@ -224,9 +236,36 @@ function renderSkills(skills){
   (skills||[]).forEach(sk=>{
     const b=document.createElement('button');
     b.className='btn-skill';b.textContent=sk;b.dataset.sk=sk;
-    b.addEventListener('click',()=>{archIn.value=sk;execSkill()});
+    b.addEventListener('click',()=>showSkillExecModal(sk));
     skillList.appendChild(b);
   });
+}
+let currentSkillId='';
+function showSkillExecModal(skillId){
+  let m=$('#skillExecModal');
+  if(!m){const div=document.createElement('div');div.id='skillExecModal';div.className='trace-panel';div.innerHTML='<span class="trace-close" id="skillExecClose">&times;</span><h3>Execute: <span id="skillExecName"></span></h3><textarea id="skillExecArgs" placeholder="{}" rows="4" style="width:100%;font-family:monospace;margin:.5rem 0"></textarea><input id="skillExecInput" placeholder="input text" style="width:100%;padding:.4rem;margin-bottom:.5rem"><button class="btn-ex" id="skillExecBtn">EXECUTE</button><pre id="skillExecResult" style="margin-top:.5rem;max-height:200px;overflow:auto"></pre>';document.body.appendChild(div);$('#skillExecClose').onclick=()=>div.classList.remove('show');$('#skillExecBtn').onclick=()=>{doSkillExec(currentSkillId);div.classList.remove('show')};m=div}
+  currentSkillId=skillId;
+  $('#skillExecName').textContent=skillId;
+  $('#skillExecArgs').value='{}';
+  $('#skillExecInput').value='';
+  $('#skillExecResult').textContent='';
+  $('#skillExecModal').classList.add('show');
+}
+async function doSkillExec(skillId){
+  const argsEl=$('#skillExecArgs'),inputEl=$('#skillExecInput'),resultEl=$('#skillExecResult');
+  let args={};
+  try{const raw=JSON.parse(argsEl.value||'{}');args=Object.fromEntries(Object.entries(raw).map(([k,v])=>[k,String(v)]))}catch(e){resultEl.textContent='Invalid JSON: '+e.message;return}
+  resultEl.textContent='Running...';
+  try{
+    const r=await fetch('/v1/skills/execute',{
+      method:'POST',headers:authHeaders(),
+      body:JSON.stringify({skill_id:skillId,text:inputEl.value,input:inputEl.value,args})
+    });
+    const d=await r.json();
+    resultEl.textContent=JSON.stringify(d,null,2);
+    if(r.ok)tlog('<span class="t-ok">[OK] '+skillId+' '+esc(JSON.stringify(d).slice(0,80))+'</span>');
+    else tlog('<span class="t-err">[ERR] '+esc(d.error||d.reason||'')+'</span>');
+  }catch(e){resultEl.textContent=e.message;tlog('<span class="t-err">[NET] '+esc(e.message)+'</span>')}
 }
 setInterval(refreshHealth,4000);refreshHealth();
 
@@ -247,14 +286,34 @@ async function send(){
   try{
     const r=await fetch('/v1/chat/completions',{
       method:'POST',headers:authHeaders(),
-      body:JSON.stringify({messages:history})
+      body:JSON.stringify({messages:history,stream:true})
     });
-    const d=await r.json();
-    if(!r.ok){cur.remove();el.textContent='[Error] '+(d.error||r.statusText);return}
-    const c=d.choices?.[0]?.message?.content||'(empty)';
-    const aid=d.action_id||'';
-    history.push({role:'assistant',content:c});
-    await typeOut(el,c,cur,aid);
+    if(!r.ok){const d=await r.json();cur.remove();el.textContent='[Error] '+(d.error||r.statusText);return}
+    if(r.headers.get('content-type')?.includes('text/event-stream')){
+      const reader=r.body.getReader();const decoder=new TextDecoder();let buf='',full='',aid='';
+      while(true){
+        const{done,value}=await reader.read();
+        if(done)break;
+        buf+=decoder.decode(value,{stream:true});
+        const parts=buf.split('\n\n');buf=parts.pop()||'';
+        for(const block of parts){
+          const m=block.match(/^data: (.+)$/m);
+          if(!m)continue;
+          const d=m[1];
+          if(d==='[DONE]')break;
+          try{const j=JSON.parse(d);aid=j.action_id||aid;const c=j.choices?.[0]?.delta?.content;if(c){full+=c;el.textContent=full;el.appendChild(cur);chatBody.scrollTop=chatBody.scrollHeight}}catch(_){}
+        }
+      }
+      cur.remove();
+      if(aid){const idEl=document.createElement('div');idEl.className='msg-id';idEl.textContent='#'+aid;idEl.title='Click to trace';idEl.onclick=()=>showTrace(aid);el.appendChild(idEl)}
+      history.push({role:'assistant',content:full});
+    }else{
+      const d=await r.json();
+      const c=d.choices?.[0]?.message?.content||'(empty)';
+      const aid=d.action_id||'';
+      history.push({role:'assistant',content:c});
+      await typeOut(el,c,cur,aid);
+    }
   }catch(e){cur.remove();el.textContent='[Network] '+e.message}
   finally{busy=false;btnSend.disabled=false}
 }
@@ -305,7 +364,7 @@ $('#traceClose').addEventListener('click',()=>$('#tracePanel').classList.remove(
 /* Ledger */
 async function pollLedger(){
   try{
-    const r=await fetch('/v1/ledger/latest',{headers:authHeaders()});
+    const r=await fetch('/v1/ledger/latest?limit=20',{headers:authHeaders()});
     if(!r.ok)return;
     const entries=await r.json();
     if(!Array.isArray(entries))return;

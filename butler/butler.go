@@ -91,3 +91,27 @@ func (b *Butler) HandleChat(req llm.Request) (llm.Response, error) {
 
 	return resp, nil
 }
+
+// HandleChatStream returns a channel of content chunks and sessionID for streaming.
+func (b *Butler) HandleChatStream(req llm.Request) (ch <-chan string, sessionID string, err error) {
+	if b.grantFn != nil && !b.grantFn("butler", "deepseek-api") {
+		return nil, "", fmt.Errorf("grant denied: butler -> deepseek-api")
+	}
+	sessionID = fmt.Sprintf("%d", time.Now().UnixMilli())
+	user := "default"
+	if len(req.Messages) > 0 {
+		last := req.Messages[len(req.Messages)-1]
+		if err := b.memory.SaveMemory(user, sessionID, last.Role, last.Content); err != nil {
+			log.Printf("butler: viking save user: %v", err)
+		}
+	}
+	ch, err = b.llm.ChatStream(req)
+	return ch, sessionID, err
+}
+
+// SaveStreamedResponse saves the full assistant response after streaming completes.
+func (b *Butler) SaveStreamedResponse(user, sessionID, content string) {
+	if err := b.memory.SaveMemory(user, sessionID, "assistant", content); err != nil {
+		log.Printf("butler: viking save assistant: %v", err)
+	}
+}
