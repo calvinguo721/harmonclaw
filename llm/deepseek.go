@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"os"
+
+	"harmonclaw/governor"
 )
 
 const deepseekURL = "https://api.deepseek.com/v1/chat/completions"
@@ -38,7 +40,7 @@ func NewDeepSeekClient() (*DeepSeekClient, error) {
 	return &DeepSeekClient{
 		apiKey:     key,
 		endpoint:   deepseekURL,
-		httpClient: &http.Client{},
+		httpClient: governor.SecureClient(),
 	}, nil
 }
 

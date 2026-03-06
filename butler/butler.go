@@ -34,6 +34,15 @@ func New(provider llm.Provider, mem viking.Memory, ledger viking.Ledger) *Agent 
 func (a *Agent) SetGrantFunc(fn func(string, string) bool) { a.grantFn = fn }
 func (a *Agent) Heartbeat() <-chan time.Time                { return a.hb }
 
+func (a *Agent) Status() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.running {
+		return "ok"
+	}
+	return "degraded"
+}
+
 func (a *Agent) Start() {
 	a.mu.Lock()
 	defer a.mu.Unlock()

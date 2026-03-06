@@ -1,9 +1,13 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"expvar"
 	"fmt"
 	"log"
 	"os"
+	"runtime"
 
 	"harmonclaw/architect"
 	"harmonclaw/butler"
@@ -16,7 +20,28 @@ import (
 	_ "harmonclaw/skills/doc_perceiver"
 )
 
+func init() {
+	expvar.Publish("goroutine_count", expvar.Func(func() any { return runtime.NumGoroutine() }))
+	expvar.Publish("heap_alloc_bytes", expvar.Func(func() any {
+		var m runtime.MemStats
+		runtime.ReadMemStats(&m)
+		return m.HeapAlloc
+	}))
+}
+
+const version = "v0.1.7"
+
 func main() {
+	// --- boot banner (IRON RULE #8) ---
+	rulesSHA := ""
+	if data, err := os.ReadFile(".cursorrules"); err == nil {
+		h := sha256.Sum256(data)
+		rulesSHA = hex.EncodeToString(h[:])
+	} else {
+		rulesSHA = "unavailable"
+	}
+	log.Printf("[BOOT] version=%s rules_sha256=%s", version, rulesSHA)
+
 	// --- infrastructure ---
 	provider, err := llm.NewDeepSeekClient()
 	if err != nil {
@@ -58,7 +83,7 @@ func main() {
 	gov.Start()
 
 	// --- gateway ---
-	srv := gateway.New(":8080", b, a, ledger)
+	srv := gateway.New(":8080", gov, b, a, ledger)
 	log.Printf("HarmonClaw listening on %s  [sovereignty=%s]", srv.Addr, gateway.SovereigntyMode)
 	if err := srv.ListenAndServe(); err != nil {
 		log.Fatalf("server died: %v", err)

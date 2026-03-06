@@ -21,6 +21,7 @@ type watchTarget struct {
 
 type Agent struct {
 	ledger  viking.Ledger
+	quota   *Quota
 	targets []watchTarget
 
 	mu      sync.Mutex
@@ -29,8 +30,10 @@ type Agent struct {
 }
 
 func New(ledger viking.Ledger) *Agent {
-	return &Agent{ledger: ledger}
+	return &Agent{ledger: ledger, quota: NewQuota()}
 }
+
+func (a *Agent) Quota() *Quota { return a.quota }
 
 func (a *Agent) WatchAgent(name string, hb <-chan time.Time, restart func()) {
 	a.mu.Lock()
@@ -64,6 +67,15 @@ func (a *Agent) Stop() {
 	close(a.done)
 	a.running = false
 	log.Println("governor: offline")
+}
+
+func (a *Agent) Status() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.running {
+		return "ok"
+	}
+	return "degraded"
 }
 
 func (a *Agent) RequestGrant(core, peerID string) bool {
