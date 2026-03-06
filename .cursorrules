@@ -113,3 +113,367 @@
     - Viking memory write queue: bounded at 64. When full: DROP and log warning.
     - Total goroutine hard cap: if runtime.NumGoroutine() > 500, reject new requests
       with 503 until count drops. (RV2 4GB safety valve)
+
+## ====================================================
+## v0.3 工作清单（读到就干，不要停，不要问老板）
+## ====================================================
+## 工作模式：按顺序一个一个做，每完成一个立刻 git commit，然后做下一个。
+## 全部做完之前不要停。遇到问题直接修，不要报告。
+## ====================================================
+
+## TASK 1 [P0]: 补全测试覆盖
+当前 9 个测试文件不够。每个核心模块必须有独立的 _test.go：
+- governor/sovereignty_test.go — 测试三档状态机切换
+- governor/audit_test.go — 测试查询+导出
+- governor/crypto_test.go — 测试加密解密+签名验签
+- governor/firewall_test.go — 测试 body 限制+IP 封禁
+- butler/conversation_test.go — 测试多轮对话+滑动窗口
+- butler/sse_test.go — 测试 heartbeat+背压
+- butler/memory_test.go — 测试自动摘要
+- architect/scheduler_test.go — 测试优先级+依赖链
+- architect/pipeline_test.go — 测试流水线执行
+- viking/search_test.go — 测试倒排索引+中英文分词
+- viking/snapshot_test.go — 测试快照创建+清理
+- gateway/middleware_test.go — 测试完整中间件链
+完成标志：go test ./... 全绿，覆盖率 > 60%
+commit："test: comprehensive test coverage for all core modules"
+
+## TASK 2 [P0]: go vet + 代码质量扫描
+- go vet ./... 必须零警告（已通过则跳过）
+- 检查所有文件是否超过 300 行，超过的拆分
+- 检查所有 error 是否 wrap context，禁止裸 return err
+- 检查所有硬编码字符串，换成配置文件或环境变量
+commit："chore: code quality sweep - vet, split, wrap errors"
+
+## TASK 3 [P0]: Token 认证中间件
+当前 auth 中间件可能是占位符。实现真正的 JWT token 认证：
+- governor/auth.go：
+  - GenerateToken(userID, role string) (string, error)
+  - ValidateToken(token string) (*Claims, error)
+  - RefreshToken(token string) (string, error)
+- 用 Go 标准库 crypto/hmac + crypto/sha256 实现，禁止引入第三方 JWT 库
+- 密钥从环境变量 HC_JWT_SECRET 读取
+- Token 过期时间 24h，Refresh 窗口 72h
+- 中间件从 Authorization: Bearer <token> 读取
+- /healthz 和 /v1/auth/login 跳过认证
+- governor/auth_test.go：测试生成/验证/过期/篡改
+commit："feat: JWT token auth middleware with HMAC-SHA256"
+
+## TASK 4 [P0]: 前端登录页
+- web/login.html：简洁登录页（用户名+密码）
+- POST /v1/auth/login → 返回 JWT token
+- 登录后存 token 到 localStorage
+- web/index.html 所有 API 调用加上 Authorization header
+- 未登录访问任何页面自动跳转到 login.html
+- 样式风格与现有 web/index.html 保持一致（暗色主题）
+commit："feat: login page + token-based auth flow"
+
+## TASK 5 [P0]: Sovereignty 白名单完善
+检查 governor/sovereignty.go，确保：
+- 三档状态机切换时写 Ledger 并发 bus 事件（已实现则跳过）
+- 添加 GeoIP 检查占位符（用 Go 标准库解析 IP，简单的国内/国外判断）
+- 添加硬件白名单检查占位符（读取 configs/allowed-boards.json）
+- sovereignty_test.go 补全测试
+commit："feat: sovereignty whitelist with geo + hw board checks"
+
+## TASK 6 [P1]: expvar 监控端点
+- 给 Gateway 加 /debug/vars 端点（Go 标准库 expvar）
+- 暴露：goroutine 数、heap 内存、每个 skill 调用次数、每个端点请求数、平均响应时间
+- web/index.html 底部状态栏已有 goroutine/heap，确保它读的是 /debug/vars
+commit："feat: expvar metrics endpoint with skill & endpoint stats"
+
+## TASK 7 [P1]: 资源配额强化
+- 每个 skill 有 CPU/内存/超时配额（从 configs/skill-quotas.json 读取）
+- Architect scheduler 在调度时检查配额，超出则拒绝执行
+- 超时用 context.WithTimeout 实现
+commit："feat: per-skill resource quotas with timeout enforcement"
+
+## TASK 8 [P1]: README 全面更新
+README.md 必须包含：
+- 项目介绍（一句话）
+- 架构图（用 ASCII 或 Mermaid）
+- 快速开始（go build / go test / go run）
+- API 端点列表（21 个，含方法+路径+说明）
+- 配置文件说明
+- 铁律摘要
+- 许可证声明（BSL 1.1）
+commit："docs: comprehensive README with architecture and API reference"
+
+## TASK 9 [P1]: 创建 configs/allowed-boards.json
+内容：
+{"boards":[{"name":"Orange Pi RV2","arch":"riscv64","status":"approved"},{"name":"Orange Pi 3B","arch":"arm64","status":"approved"}],"os":["OpenHarmony 5.0","OpenHarmony 4.1"],"geo":["CN"]}
+让 sovereignty.go 读取这个文件。
+commit："config: add allowed-boards.json for sovereignty checks"
+
+## TASK 10 [P1]: 创建 configs/skill-quotas.json
+内容：
+{"doc_perceiver":{"timeout_ms":30000,"max_memory_mb":256},"web_search":{"timeout_ms":15000,"max_memory_mb":128},"tts":{"timeout_ms":60000,"max_memory_mb":512},"openclaw_proxy":{"timeout_ms":30000,"max_memory_mb":256},"mimicclaw_adapter":{"timeout_ms":30000,"max_memory_mb":256},"nanoclaw_adapter":{"timeout_ms":30000,"max_memory_mb":256},"picoclaw_adapter":{"timeout_ms":30000,"max_memory_mb":256}}
+commit："config: add skill-quotas.json for resource limits"
+
+## TASK 11 [P2]: Smoke Test 补全
+检查 smoke_test.go，确保覆盖所有 21 个端点。缺少的补上。
+commit："test: complete smoke test coverage for all 21 endpoints"
+
+## TASK 12 [P2]: RISC-V 交叉编译脚本
+创建 scripts/build-riscv.ps1：
+$env:GOOS="linux"; $env:GOARCH="riscv64"
+go build -o harmonclaw-riscv64 ./cmd/harmonclaw
+并在 scripts/build-all.ps1 里加上全平台编译（windows/amd64 + linux/amd64 + linux/riscv64）
+commit："build: cross-compile scripts for all target platforms"
+
+## ====================================================
+## v0.4 真正的技能实现（不是占位符，是能跑的代码）
+## ====================================================
+
+## TASK 13 [P0]: doc_perceiver 真实实现
+当前可能是占位符。实现真正的文档解析：
+- 支持读取 .txt / .md / .json 文件
+- 提取文档摘要（前 500 字 + 关键词）
+- 返回结构化 JSON：{title, summary, keywords, word_count, file_type}
+- 支持目录批量扫描
+- 写 doc_perceiver_test.go
+commit: "feat: real doc_perceiver - file parsing + summary extraction"
+
+## TASK 14 [P0]: web_search 真实实现
+实现真正的网页搜索（用 Go 标准库 net/http 爬取）：
+- 接受搜索关键词，调用配置的搜索引擎 API（或爬取 DuckDuckGo HTML）
+- 解析 HTML 提取标题+摘要+URL
+- 返回 top 10 结果
+- 超时控制 15s
+- 写 web_search_test.go
+commit: "feat: real web_search - HTTP scraping + result parsing"
+
+## TASK 15 [P0]: tts 真实实现
+实现 TTS 技能的真实逻辑：
+- 接受文本，调用配置的 TTS API（环境变量 HC_TTS_ENDPOINT）
+- 如果没配置 TTS API，降级为返回纯文本 + 音素分割（占位）
+- 支持中文/英文
+- 按句切分，与 butler/tts_stream.go 对接
+- 写 tts_test.go
+commit: "feat: real tts skill with API fallback"
+
+## TASK 16 [P0]: openclaw_proxy 真实实现
+实现真正的 OpenClaw 代理：
+- HTTP 转发到 OpenClaw Gateway（环境变量 HC_OPENCLAW_ENDPOINT，默认 http://localhost:3000）
+- 请求/响应转换：HC 格式 ↔ OpenClaw 格式
+- 错误处理 + 重试（1 次）
+- 连接池复用
+- 写 openclaw_proxy_test.go
+commit: "feat: real openclaw_proxy with format conversion + retry"
+
+## TASK 17 [P1]: mimicclaw_proxy / nanoclaw_proxy / picoclaw_proxy 真实实现
+三个代理技能同样模式：
+- 每个从环境变量读取目标端点（HC_MIMICCLAW_ENDPOINT 等）
+- HTTP 转发 + 格式转换 + 错误处理
+- 如果目标不可达，返回 graceful degradation 响应
+- 各写一个 _test.go
+commit: "feat: real proxy skills for mimicclaw/nanoclaw/picoclaw"
+
+## TASK 18 [P0]: 配置热加载
+- configs/watcher.go：监控 configs/ 目录文件变化
+- 用 Go 标准库 os.Stat 轮询（10s 间隔）
+- 文件变化时自动重新加载配置，不重启服务
+- 通过 bus 事件通知所有模块
+- 写 watcher_test.go
+commit: "feat: config hot-reload with file watcher"
+
+## TASK 19 [P0]: Graceful Shutdown
+- cmd/harmonclaw/main.go 加入 signal 监听（SIGINT/SIGTERM）
+- 收到信号后：
+  1. 停止接受新请求
+  2. 等待当前请求完成（30s 超时）
+  3. 关闭 Cron scheduler
+  4. 刷新 Viking 快照
+  5. 关闭 Ledger
+  6. 写审计日志 "system shutdown"
+  7. os.Exit(0)
+- 写 shutdown_test.go
+commit: "feat: graceful shutdown with request draining"
+
+## TASK 20 [P1]: WebSocket 支持
+- gateway/websocket.go：用 Go 标准库实现 WebSocket upgrade
+- 支持双向通信：客户端发消息 → Butler 处理 → 推送响应
+- 心跳检测 30s
+- 异常断开自动重连提示
+- 前端 web/index.html Butler 面板加 WebSocket 选项（默认用 SSE，可切换 WS）
+commit: "feat: WebSocket support for Butler real-time chat"
+
+## TASK 21 [P1]: 请求/响应日志中间件
+- gateway/logger.go：
+  - 记录每个请求：method, path, status, latency_ms, action_id, user_id
+  - 写入 logs/access.log（JSONL 格式）
+  - 日志轮转：每 100MB 或每天轮转
+  - 敏感字段脱敏（password 等）
+commit: "feat: structured request logging with rotation"
+
+## TASK 22 [P1]: 错误页面
+- web/error.html：统一错误页面（401/403/404/500/429）
+- Gateway 返回错误时，如果 Accept 含 text/html 则返回错误页面
+- 如果 Accept 含 application/json 则返回 JSON 错误
+- 错误页风格与暗色主题一致
+commit: "feat: unified error pages with content negotiation"
+
+## TASK 23 [P1]: API 版本管理
+- 所有端点已经在 /v1/ 下，确认一致性
+- 加 /v1/version 端点，返回 {version, build_time, go_version, git_commit}
+- build_time 和 git_commit 用 -ldflags 注入
+- 更新 scripts/build-all.ps1 加入 ldflags
+commit: "feat: version endpoint with build info injection"
+
+## TASK 24 [P0]: Bus 事件系统完善
+- bus/bus.go：简单的发布/订阅事件总线
+- 支持：Publish(topic, payload) / Subscribe(topic, handler) / Unsubscribe
+- 用 Go channel 实现，带缓冲区（100 条）
+- 事件类型：sovereignty.changed, config.reloaded, skill.degraded, skill.recovered, auth.failed
+- Governor/Butler/Architect/Viking 都订阅相关事件
+- 写 bus_test.go
+commit: "feat: event bus with pub/sub for cross-module communication"
+
+## TASK 25 [P1]: 健康仪表板页面
+- web/health.html：独立的健康仪表板
+- 实时显示：
+  - 四大核心状态（绿/黄/红）
+  - 每个 skill 状态（healthy/degraded/dead）
+  - 最近 5 分钟请求量趋势图（简单 SVG）
+  - Sovereignty 当前模式
+  - Firewall 最近封禁
+  - Viking 存储用量
+- 5s 自动刷新
+commit: "feat: health dashboard with real-time status"
+
+## ====================================================
+## v0.5 Open Core 双仓库 + CI/CD
+## ====================================================
+
+## TASK 26 [P0]: BSL 1.1 许可证文件
+- 创建 LICENSE 文件，内容为 BSL 1.1 标准模板
+- Licensor: 启觉科技
+- Licensed Work: HarmonClaw
+- Change Date: 4 years from release
+- Change License: Apache 2.0
+- 每个 .go 文件顶部加版权头注释：
+  // Copyright 2026 启觉科技. All rights reserved.
+  // Licensed under the Business Source License 1.1
+commit: "legal: add BSL 1.1 license + copyright headers"
+
+## TASK 27 [P0]: Apache 2.0 社区版拆分准备
+- 创建 LICENSE-COMMUNITY 文件（Apache 2.0 标准模板）
+- 创建 NOTICE 文件
+- 创建 docs/OPEN-CORE.md 说明双仓库策略
+commit: "legal: Apache 2.0 community license + open core docs"
+
+## TASK 28 [P0]: Makefile / 构建统一
+- 创建 Makefile：make build / make test / make vet / make lint / make build-riscv / make build-all / make clean / make run / make docker（占位）
+- 同时创建 scripts/build-all.ps1 实现同样功能
+commit: "build: unified Makefile + PowerShell build scripts"
+
+## TASK 29 [P1]: Dockerfile
+- Dockerfile（多阶段构建）：Stage 1 golang:1.22-alpine 构建，Stage 2 alpine:3.19 运行，暴露 8080，HEALTHCHECK 指向 /healthz
+- .dockerignore 文件
+commit: "build: multi-stage Dockerfile with health check"
+
+## TASK 30 [P1]: CI 流水线
+- .github/workflows/ci.yml：push/PR 触发，go vet / go test / go build / build riscv64
+- .github/workflows/release.yml：tag v* 触发，构建三平台 → GitHub Release
+commit: "ci: GitHub Actions for test + release"
+
+## TASK 31 [P1]: .gitignore 完善
+- 确保包含：*.exe, harmonclaw-*, logs/, data/, .env, *.key, .DS_Store, Thumbs.db
+commit: "chore: comprehensive .gitignore"
+
+## TASK 32 [P1]: 环境变量模板
+- 创建 .env.example
+- configs/config.go 从 .env 或环境变量读取所有配置
+commit: "config: .env.example + unified config loading"
+
+## TASK 33 [P0]: 统一配置加载器
+- configs/config.go 重构：Config struct、Load() 优先级、Validate()
+- 所有模块通过 config.Get() 获取配置
+- 写 config_test.go
+commit: "refactor: unified config loader with priority chain"
+
+## TASK 34 [P1]: SDK 脚手架
+- 创建 sdk/go/client.go：Go SDK 客户端
+- NewClient(baseURL, token) / Chat(msg) / Search(query) / Skills() / Health()
+- sdk/go/client_test.go
+commit: "feat: Go SDK client scaffold"
+
+## TASK 35 [P1]: CLI 工具
+- cmd/hc/main.go：hc chat / hc skills / hc health / hc version / hc sovereign status / hc audit query
+- 用 Go 标准库 flag 解析参数
+commit: "feat: hc CLI tool for admin operations"
+
+## ====================================================
+## v0.6 真正的吞噬（OpenClaw 核心逻辑 Go 重写）
+## ====================================================
+
+## TASK 36 [P0]: OpenClaw 源码分析报告
+- 读 OpenClaw 源码，写 docs/openclaw-analysis.md
+commit: "docs: OpenClaw source analysis for Go rewrite planning"
+
+## TASK 37 [P0]: 对话引擎 Go 重写
+- engine/conversation_engine.go：从 OpenClaw 提取对话管理核心逻辑，用 Go 重写
+- 与 Butler 集成，写 conversation_engine_test.go
+commit: "feat: conversation engine rewritten in Go from OpenClaw"
+
+## TASK 38 [P0]: 技能路由 Go 重写
+- engine/skill_router.go：从用户意图匹配最佳技能，支持多技能组合
+- 与 Architect scheduler 集成，写 skill_router_test.go
+commit: "feat: skill router rewritten in Go from OpenClaw"
+
+## TASK 39 [P1]: 记忆系统 Go 重写
+- engine/memory_engine.go：短期/长期记忆、检索、衰减
+- 与 Butler memory.go 集成，写 memory_engine_test.go
+commit: "feat: memory engine rewritten in Go from OpenClaw"
+
+## TASK 40 [P1]: Channel 系统
+- channel/channel.go：定义 Channel 接口（HTTP / WebSocket / WeChat）
+- channel/http_channel.go、channel/ws_channel.go、channel/wechat_channel.go（占位）
+commit: "feat: channel system with pluggable transports"
+
+## ====================================================
+## v0.7 硬件部署 + 生产强化
+## ====================================================
+
+## TASK 41 [P1]: RV2 部署脚本
+- scripts/deploy-rv2.sh：SSH 上传 + systemd + 启动
+commit: "deploy: RV2 deployment script with systemd"
+
+## TASK 42 [P1]: systemd Service 文件
+- deploy/harmonclaw.service
+commit: "deploy: systemd service file for production"
+
+## TASK 43 [P1]: 自动更新机制
+- updater/updater.go：每 6h 检查 GitHub Releases → 下载 → 替换 → 重启 → 失败回滚
+commit: "feat: auto-updater with rollback"
+
+## TASK 44 [P1]: Telemetry 基础
+- telemetry/telemetry.go：匿名使用数据，可关闭 HC_TELEMETRY=off
+commit: "feat: opt-in telemetry with privacy guarantees"
+
+## TASK 45 [P1]: Rate Limit 动态调整
+- PUT /v1/governor/ratelimit + 前端控件 + 写 Ledger
+commit: "feat: dynamic rate limit adjustment via API"
+
+## TASK 46 [P2]: 数据备份与恢复
+- backup/backup.go：备份 Viking+configs+Ledger → tar.gz，hc backup create/restore
+commit: "feat: backup and restore for all persistent data"
+
+## TASK 47 [P2]: 前端 Viking 面板
+- web/index.html 加 Viking Tab：搜索框+存储列表+快照列表+GC 状态
+commit: "feat: Viking panel in web dashboard"
+
+## TASK 48 [P2]: 前端美化
+- 统一导航栏 Governor/Butler/Architect/Viking/Health + 响应式布局 + 统一色板 + skeleton 屏
+commit: "ui: unified design system + responsive layout"
+
+## TASK 49 [P2]: 全量集成测试
+- tests/integration_test.go：启动完整服务 → 登录→对话→搜索→审计→快照→关闭 + 10并发 + 限流测试
+commit: "test: full integration test suite"
+
+## TASK 50 [P2]: 最终清理 + v0.7 tag
+- 清理所有 TODO/FIXME，确认版权头，go test 全绿，go vet 零警告，三平台编译通过
+- 更新 README + .cursorrules 统计数据
+- 创建 CHANGELOG.md
+- git tag v0.7.0 && git push --tags
+commit: "milestone: v0.7.0 - production ready"
