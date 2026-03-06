@@ -2,14 +2,29 @@
 package viking
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"time"
 )
 
 type Memory interface {
 	SaveMemory(user, sessionID, role, content string) error
+}
+
+// HistoryEntry for conversation history.
+type HistoryEntry struct {
+	Role    string
+	Content string
+}
+
+// MemoryWithHistory extends Memory with history load.
+type MemoryWithHistory interface {
+	Memory
+	LoadHistory(user, sessionID string) ([]HistoryEntry, error)
 }
 
 type FileStore struct {
@@ -48,4 +63,35 @@ func (fs *FileStore) SaveMemory(user, sessionID, role, content string) error {
 		return fmt.Errorf("write %s: %w", fpath, err)
 	}
 	return nil
+}
+
+var historyLineRe = regexp.MustCompile(`^\[\d{2}:\d{2}:\d{2}\] (\w+): (.*)`)
+
+// LoadHistory reads conversation history for user/session. Scans last 7 days.
+func (fs *FileStore) LoadHistory(user, sessionID string) ([]HistoryEntry, error) {
+	var entries []HistoryEntry
+	base := filepath.Join(fs.baseDir, user)
+	for d := 0; d < 7; d++ {
+		date := time.Now().AddDate(0, 0, -d).Format("2006-01-02")
+		fpath := filepath.Join(base, date, sessionID+".txt")
+		f, err := os.Open(fpath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, err
+		}
+		sc := bufio.NewScanner(f)
+		for sc.Scan() {
+			m := historyLineRe.FindStringSubmatch(sc.Text())
+			if len(m) == 3 {
+				entries = append(entries, HistoryEntry{Role: m[1], Content: strings.TrimSpace(m[2])})
+			}
+		}
+		f.Close()
+		if len(entries) > 0 {
+			break
+		}
+	}
+	return entries, nil
 }

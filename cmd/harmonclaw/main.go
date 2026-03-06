@@ -44,7 +44,7 @@ func init() {
 	}))
 }
 
-const version = "v0.1.7"
+const version = "v0.2"
 
 func main() {
 	configPath := os.Getenv("HC_CONFIG")

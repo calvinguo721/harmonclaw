@@ -30,6 +30,20 @@ type Ledger interface {
 	Close()
 }
 
+// LedgerQueryFilter for audit queries.
+type LedgerQueryFilter struct {
+	TimeFrom   string // RFC3339
+	TimeTo     string
+	OperatorID string
+	ActionType string
+}
+
+// QueryableLedger supports filtered queries.
+type QueryableLedger interface {
+	Ledger
+	Query(filter LedgerQueryFilter) ([]LedgerEntry, error)
+}
+
 type FileLedger struct {
 	fpath string
 	ch    chan LedgerEntry
@@ -156,4 +170,42 @@ func sortByTimestamp(entries []LedgerEntry) {
 	sort.Slice(entries, func(i, j int) bool {
 		return entries[i].Timestamp < entries[j].Timestamp
 	})
+}
+
+// Query returns entries matching the filter.
+func (l *FileLedger) Query(filter LedgerQueryFilter) ([]LedgerEntry, error) {
+	data, err := os.ReadFile(l.fpath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []LedgerEntry{}, nil
+		}
+		return nil, fmt.Errorf("read ledger: %w", err)
+	}
+	lines := bytes.Split(bytes.TrimSpace(data), []byte("\n"))
+	var entries []LedgerEntry
+	for _, line := range lines {
+		jsonPart := ledgerLineJSON(line)
+		if len(jsonPart) == 0 {
+			continue
+		}
+		var e LedgerEntry
+		if json.Unmarshal(jsonPart, &e) != nil {
+			continue
+		}
+		if filter.OperatorID != "" && e.OperatorID != filter.OperatorID {
+			continue
+		}
+		if filter.ActionType != "" && e.ActionType != filter.ActionType {
+			continue
+		}
+		if filter.TimeFrom != "" && e.Timestamp < filter.TimeFrom {
+			continue
+		}
+		if filter.TimeTo != "" && e.Timestamp > filter.TimeTo {
+			continue
+		}
+		entries = append(entries, e)
+	}
+	sortByTimestamp(entries)
+	return entries, nil
 }
