@@ -137,9 +137,18 @@ func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	text := req.Text
+	if text == "" {
+		text = req.Input
+	}
+	if text == "" {
+		writeError(w, http.StatusBadRequest, "input text is empty")
+		return
+	}
+
 	input := skills.SkillInput{
 		TraceID:   fmt.Sprintf("%d", time.Now().UnixMilli()),
-		Text:      req.Text,
+		Text:      text,
 		Args:      req.Args,
 		LocalOnly: true,
 	}
@@ -173,6 +182,7 @@ func (s *Server) handleTestIllegal(w http.ResponseWriter, _ *http.Request) {
 
 type skillRequest struct {
 	SkillID string            `json:"skill_id"`
+	Input   string            `json:"input"`
 	Text    string            `json:"text"`
 	Args    map[string]string `json:"args"`
 }
