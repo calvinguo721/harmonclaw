@@ -2,6 +2,7 @@ package sandbox
 
 var approvedSkills = map[string]bool{
 	"skill_healthcheck": true,
+	"doc_perceiver":     true,
 }
 
 type Guard interface {

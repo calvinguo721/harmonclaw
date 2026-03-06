@@ -12,6 +12,8 @@ import (
 	"harmonclaw/llm"
 	"harmonclaw/sandbox"
 	"harmonclaw/viking"
+
+	_ "harmonclaw/skills/doc_perceiver"
 )
 
 func main() {
@@ -42,15 +44,15 @@ func main() {
 	a := architect.New(guard, ledger)
 	gov := governor.New(ledger)
 
-	// grant wiring: butler & architect request authorization through governor
+	// grant wiring
 	b.SetGrantFunc(gov.RequestGrant)
 	a.SetGrantFunc(gov.RequestGrant)
 
-	// heartbeat wiring: governor watches and self-heals
+	// heartbeat wiring
 	gov.WatchAgent("butler", b.Heartbeat(), func() { b.Stop(); b.Start() })
 	gov.WatchAgent("architect", a.Heartbeat(), func() { a.Stop(); a.Start() })
 
-	// ignition sequence
+	// ignition
 	b.Start()
 	a.Start()
 	gov.Start()

@@ -2,14 +2,17 @@ package gateway
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"harmonclaw/architect"
 	"harmonclaw/butler"
 	"harmonclaw/llm"
+	"harmonclaw/skills"
 	"harmonclaw/viking"
 )
 
@@ -115,21 +118,33 @@ func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := s.Architect.HandleSkill(req.SkillID)
-
-	if !result.Allowed {
+	check := s.Architect.HandleSkill(req.SkillID)
+	if !check.Allowed {
 		writeJSON(w, http.StatusForbidden, blockResponse{
 			Error:     "BLOCKED",
 			RiskLevel: "CRITICAL",
-			Reason:    result.Verdict,
+			Reason:    check.Verdict,
 		})
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]string{
-		"status": result.Status,
-		"result": result.Result,
-	})
+	sk, ok := skills.Registry[req.SkillID]
+	if !ok {
+		writeJSON(w, http.StatusOK, map[string]string{
+			"status": check.Status,
+			"result": check.Result,
+		})
+		return
+	}
+
+	input := skills.SkillInput{
+		TraceID:   fmt.Sprintf("%d", time.Now().UnixMilli()),
+		Text:      req.Text,
+		Args:      req.Args,
+		LocalOnly: true,
+	}
+	output := sk.Execute(input)
+	writeJSON(w, http.StatusOK, output)
 }
 
 func (s *Server) handleEngram(w http.ResponseWriter, _ *http.Request) {
@@ -157,7 +172,9 @@ func (s *Server) handleTestIllegal(w http.ResponseWriter, _ *http.Request) {
 // --- request/response types ---
 
 type skillRequest struct {
-	SkillID string `json:"skill_id"`
+	SkillID string            `json:"skill_id"`
+	Text    string            `json:"text"`
+	Args    map[string]string `json:"args"`
 }
 
 type blockResponse struct {
