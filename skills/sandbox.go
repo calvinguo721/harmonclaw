@@ -9,7 +9,11 @@ import (
 const defaultTimeout = 30 * time.Second
 
 func RunSandboxed(ctx context.Context, traceID string, fn func() SkillOutput) SkillOutput {
-	ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
+	return RunSandboxedWithTimeout(ctx, traceID, defaultTimeout, fn)
+}
+
+func RunSandboxedWithTimeout(ctx context.Context, traceID string, timeout time.Duration, fn func() SkillOutput) SkillOutput {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	resultCh := make(chan SkillOutput, 1)

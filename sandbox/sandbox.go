@@ -7,6 +7,8 @@ var approvedSkills = map[string]bool{
 	"web_search":         true,
 	"tts":                true,
 	"mimicclaw_proxy":    true,
+	"nanoclaw_proxy":     true,
+	"picoclaw_proxy":     true,
 }
 
 type Guard interface {
