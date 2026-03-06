@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -18,6 +19,10 @@ import (
 	"harmonclaw/skills"
 	"harmonclaw/viking"
 )
+
+func authEnabled() bool {
+	return os.Getenv("HC_AUTH_ENABLED") == "true"
+}
 
 var SovereigntyMode = "airlock"
 
@@ -54,6 +59,7 @@ func (s *Server) routes() {
 	s.Mux.HandleFunc("POST /v1/engram/inject", s.handleEngram)
 	s.Mux.HandleFunc("GET /v1/ledger/latest", s.handleLedger)
 	s.Mux.HandleFunc("GET /v1/ledger/trace", s.handleLedgerTrace)
+	s.Mux.HandleFunc("POST /v1/token", s.handleToken)
 	s.Mux.HandleFunc("GET /v1/test/illegal", s.handleTestIllegal)
 	s.Mux.Handle("GET /debug/vars", expvar.Handler())
 
@@ -68,7 +74,39 @@ func (s *Server) routes() {
 }
 
 func (s *Server) ListenAndServe() error {
-	return http.ListenAndServe(s.Addr, actionMiddleware(sovereigntyWall(s.Mux)))
+	h := actionMiddleware(sovereigntyWall(s.Mux))
+	if authEnabled() {
+		h = authMiddleware(h)
+	}
+	return http.ListenAndServe(s.Addr, h)
+}
+
+func authMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, "/v1/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if r.URL.Path == "/v1/token" && r.Method == "POST" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		ah := r.Header.Get("Authorization")
+		if !strings.HasPrefix(ah, "Bearer ") {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(map[string]string{"error": "missing or invalid token"})
+			return
+		}
+		token := strings.TrimPrefix(ah, "Bearer ")
+		if _, err := governor.ValidateToken(token); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(map[string]string{"error": "invalid token: " + err.Error()})
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // --- sovereignty middleware ---
@@ -398,6 +436,28 @@ func (s *Server) handleLedgerTrace(w http.ResponseWriter, r *http.Request) {
 		"action_id": actionID,
 		"chain":     entries,
 	})
+}
+
+func (s *Server) handleToken(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "POST only")
+		return
+	}
+	userID := "default"
+	if body, err := io.ReadAll(r.Body); err == nil && len(body) > 0 {
+		var req struct {
+			UserID string `json:"user_id"`
+		}
+		if json.Unmarshal(body, &req) == nil && req.UserID != "" {
+			userID = req.UserID
+		}
+	}
+	token, err := governor.GenerateToken(userID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "token generation failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"token": token, "user_id": userID})
 }
 
 func (s *Server) handleTestIllegal(w http.ResponseWriter, _ *http.Request) {

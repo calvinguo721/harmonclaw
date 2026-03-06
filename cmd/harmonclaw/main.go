@@ -60,24 +60,18 @@ func main() {
 	sort.Strings(skillList)
 
 	// --- infrastructure ---
-	provider, err := llm.NewDeepSeekClient()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
-		os.Exit(1)
-	}
-
-	mem, err := viking.NewFileStore()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
-		os.Exit(1)
-	}
-
 	ledger, err := viking.NewFileLedger()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
 		os.Exit(1)
 	}
 	defer ledger.Close()
+
+	mem, err := viking.NewFileStore()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
+		os.Exit(1)
+	}
 
 	guard := sandbox.NewWhitelist()
 
@@ -96,19 +90,35 @@ func main() {
 	}
 
 	sovereigntyPath := "configs/sovereignty.json"
+	sovMode := os.Getenv("HC_SOVEREIGNTY_MODE")
+	if sovMode == "" {
+		sovMode = "airlock"
+	}
+	sovDomains := []string{}
 	if data, err := os.ReadFile(sovereigntyPath); err == nil {
 		var sov struct {
 			Version string `json:"version"`
 			Modes   map[string]struct {
-				Desc   string   `json:"description"`
+				Desc    string   `json:"description"`
 				Domains []string `json:"allowed_domains"`
 			} `json:"modes"`
 		}
 		if json.Unmarshal(data, &sov) == nil {
 			log.Printf("[BOOT] sovereignty: loaded from %s (version=%s)", sovereigntyPath, sov.Version)
+			if m, ok := sov.Modes[sovMode]; ok {
+				sovDomains = m.Domains
+			}
 		}
 	} else {
 		log.Printf("[BOOT] sovereignty: %s (using default)", err)
+	}
+	governor.InitSecureClient(ledger, sovMode, sovDomains)
+	gateway.SovereigntyMode = sovMode
+
+	provider, err := llm.NewDeepSeekClient()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
+		os.Exit(1)
 	}
 
 	// --- three cores: Governor → Butler → Architect ---
