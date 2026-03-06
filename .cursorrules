@@ -1,11 +1,115 @@
-# HarmonClaw 48小时闪击战 - AI 行为准则
+## HarmonClaw v0.2 架构与统计
 
-1. 角色：你是世界顶级的 Go 语言极客、系统安全专家。
-2. 架构限制：
-   - 必须且只能使用 Go 标准库（net/http, os, filepath 等），外部依赖仅限必要的 SDK。
-   - 绝对禁止使用任何需要 CGO 的库，项目必须能在 RISC-V 上纯净编译。
-   - 【极其重要】：每写完一个模块，必须执行 `go mod tidy`。
-   - 【极其重要】：在每次 git commit 之前，必须运行交叉编译测试：`CGO_ENABLED=0 GOOS=linux GOARCH=riscv64 go build -o NUL ./cmd/harmonclaw/`。如果编译失败，立刻停下来修复，绝对不准进入下一个模块！
-3. 记忆系统 (Viking)：抛弃数据库！必须用纯 .txt 文件树状目录实现。
-4. 代码风格：保持极简、单文件不超 300 行。先定义 interface，再写 implementation。
-5. 沟通规矩：每写完一个模块，提醒我运行 `git commit`。不要一次性把所有模块写完。
+- **规模**: 68 文件、7316 行
+- **API**: 21 端点
+- **四大核心**: Governor / Butler / Architect / Viking
+- **中间件链**: recover → firewall → ratelimit → auth → action_id → ironclaw → handler → ledger
+
+## IRON RULES (排雷铁律 — 违反任何一条立即停止)
+
+1. SERIAL PIPELINE: Build modules in strict order: gateway → llm → viking → sandbox.
+   For each module: write tests FIRST → implement → run tests → git commit → next module.
+   NEVER output all code at once.
+
+2. STDLIB ONLY: Only use Go standard library packages.
+   Allowed: net/http, os, path/filepath, encoding/json, io, fmt, log, strings, time,
+   context, sync, errors, crypto/sha256, bytes, bufio, strconv, sort, regexp.
+   BEFORE importing any github.com/ package: run CGO_ENABLED=0 GOARCH=riscv64 go build.
+   If it fails, remove the dependency and use stdlib.
+
+3. CROSS-COMPILE CHECK: After EVERY module commit, run:
+   CGO_ENABLED=0 GOOS=linux GOARCH=riscv64 go build ./cmd/harmonclaw/
+   If this fails, fix it BEFORE moving to the next module.
+
+4. VERSION LOCK: Go 1.22+, Vanilla JS (ES2020), no npm, no bundler, no framework.
+   Web frontend must be pure HTML + CSS + JS with zero external dependencies.
+
+5. NETWORK SOVEREIGNTY: No package may call net/http.Get, http.Post, http.Do,
+   or net.Dial directly. ALL external network access MUST go through
+   governor.SecureClient(). CI check:
+   grep -rn "http.Get\|http.Post\|net.Dial" --include="*.go" | grep -v governor/
+   must return empty. Violation = sovereignty bypass = critical security breach.
+
+6. CRASH ISOLATION: Every skill execution MUST be wrapped in:
+   - A dedicated goroutine
+   - defer func() { if r := recover(); r != nil { log skill_id + panic } }()
+   - context.WithTimeout() (default 5s, configurable per skill)
+   A panicking skill must NEVER crash Gateway or Governor.
+
+7. WRITE SAFETY: All file writes (Ledger JSONL, Viking .txt) MUST use atomic
+   write pattern: write to .tmp file → fsync → os.Rename to final path.
+   Single-writer goroutine only. No concurrent writes to same file.
+   Ledger: add CRC32 checksum per line for corruption detection.
+
+8. CONFIG TRANSPARENCY: On startup, print to stdout:
+   - Effective config path
+   - SHA-256 hash of config file
+   - SovereigntyMode value
+   - Number of registered skills
+   config.json must have a "version" field. Mismatch = refuse to start.
+
+9. HEALTH DEPTH: /v1/health must return per-core status JSON:
+   {
+     "governor": { "mode": "airlock", "ledger_queue": 3, "status": "ok" },
+     "butler":   { "active_sessions": 1, "tts_backend": "edge", "status": "ok" },
+     "architect": { "registered_skills": 5, "running_workers": 2, "status": "ok" },
+     "overall": "healthy" // or "degraded" if any core unhealthy
+   }
+10. CORE BUS: The three cores (Governor, Butler, Architect) communicate ONLY
+    through a typed Go channel bus defined in `bus/bus.go`.
+    Message struct: { From: CoreID, To: CoreID, Type: string, Payload: any, TraceID: string }
+    CoreID enum: "governor" | "butler" | "architect"
+    Message types: "skill_request", "skill_result", "block_notify", "health_report"
+    Rules:
+    - No core may import another core's internal package directly.
+    - All cross-core calls go through bus.Send() / bus.Subscribe().
+    - Governor is the mandatory relay for any Architect→external or Butler→external call.
+    - Bus is synchronous by default (buffered channel size=64), async opt-in per type.
+    CI check: imports between governor/, butler/, architect/ must only go through bus/.
+11. WORKER POOL: Architect skill execution MUST go through a bounded worker pool
+    (architect/pool.go), NOT bare goroutines.
+    - MaxWorkers = runtime.NumCPU() (configurable, default 4 on RV2)
+    - Each worker: dedicated goroutine + recover() + context.WithTimeout()
+    - Queue backpressure: when queue is full (default capacity=64), return 503
+      "Skill execution backlogged" instead of blocking or spawning unbounded goroutines.
+    - Worker crash → pool auto-restarts that slot, logs crash count.
+    - Governor can kill/restart entire pool via bus command "pool_reset".
+    Bare `go func()` for skill execution outside the pool = RULE VIOLATION.
+12. REALTIME PRIORITY: Butler real-time paths (voice TTS, SSE streaming, WebSocket)
+    MUST have a dedicated queue separate from batch paths (search, ledger write, skill exec).
+    Implementation:
+    - butler/realtime.go: independent buffered channel (size=16) for TTS/SSE/WS.
+    - Realtime queue is NEVER blocked by Architect worker pool backpressure.
+    - If realtime queue itself is full, drop oldest non-playing audio chunk (not user text).
+    - Latency target: TTS first-byte < 200ms on LAN, SSE token < 50ms.
+    Voice/TTS worker count is independent of Architect pool (default 2 workers).
+13. ACTION TRACE: Every skill execution MUST carry an action_id (UUID v4) that
+    persists through the ENTIRE chain:
+    Identity(action_id) → Audit(action_id) → Execute(action_id) → Ledger(action_id) → Viking write(action_id)
+    Rules:
+    - action_id is generated at Gateway request entry, passed via context.Value.
+    - All log lines for this execution MUST include action_id as structured field.
+    - Ledger JSONL line MUST include "action_id" field.
+    - Viking memory .txt MUST include action_id in metadata header.
+    - /v1/ledger/trace?id=<action_id> returns full chain of events for that action.
+    No execution may proceed without an action_id. Missing action_id = 400 Bad Request.
+14. OBSERVABILITY (stdlib only): On startup, register expvar counters at /debug/vars:
+    - goroutine_count (runtime.NumGoroutine)
+    - heap_alloc_bytes (runtime.MemStats)
+    - worker_pool_active / worker_pool_queue_depth
+    - realtime_queue_depth
+    - skill_exec_total / skill_exec_fail / skill_exec_p99_ms
+    - outbound_http_total (via governor.SecureClient counter)
+    - ledger_write_queue_depth
+    /v1/health (RULE #9) links to /debug/vars for deep diagnostics.
+    In production, a single `curl localhost:8080/debug/vars | jq` must give
+    enough info to diagnose any performance issue within 5 minutes.
+15. RESOURCE QUOTA: Prevent 4GB device from OOM or deadlock under sustained load.
+    - Per-user session concurrency: max 3 simultaneous skill executions (configurable).
+    - Per-skill QPS: max 10 req/s per skill_id (token bucket, stdlib time.Ticker).
+    - Ledger write queue: bounded at 256 entries. When full:
+      → Critical logs (security blocks, errors): BLOCK caller until space (never drop).
+      → Info logs (success audit): DROP with counter increment (expvar ledger_dropped).
+    - Viking memory write queue: bounded at 64. When full: DROP and log warning.
+    - Total goroutine hard cap: if runtime.NumGoroutine() > 500, reject new requests
+      with 503 until count drops. (RV2 4GB safety valve)
