@@ -78,8 +78,8 @@ input,textarea{border:none;outline:none;background:none;color:inherit;font:inher
   display:flex;justify-content:space-between;align-items:center;
   transition:background var(--ease),border-color var(--ease);
 }
-.le[data-s="ok"]{border-left-color:var(--accent)}
-.le[data-s="executed"]{border-left-color:#00e878}
+.le[data-s="ok"],.le[data-s="success"]{border-left-color:#00e878}
+.le[data-s="fail"]{border-left-color:var(--danger)}
 .le-left{display:flex;gap:.4rem;align-items:center;overflow:hidden}
 .le-t{color:var(--txt3);flex-shrink:0}
 .le-a{color:var(--accent);transition:color var(--ease);white-space:nowrap;
@@ -406,9 +406,7 @@ async function poll(){
     const entries=await r.json();
     if(!Array.isArray(entries))return;
 
-    let tok=0;
-    entries.forEach(e=>{tok+=e.tokens||0});
-    sTok.textContent=tok;
+    sTok.textContent=entries.length;
     sRec.textContent=entries.length;
 
     const hash=JSON.stringify(entries);
@@ -420,11 +418,11 @@ function renderLedger(entries){
   ledger.innerHTML='';
   entries.forEach(e=>{
     const d=document.createElement('div');
-    d.className='le';d.setAttribute('data-s',e.status||'ok');
+    d.className='le';d.setAttribute('data-s',e.result||'ok');
     const ts=e.timestamp?e.timestamp.substring(11,19):'--:--:--';
     d.innerHTML='<span class="le-left"><span class="le-t">'+ts+'</span>'
-      +'<span class="le-a">'+esc(e.action||'-')+'</span></span>'
-      +'<span class="le-tk">'+(e.tokens||0)+'tk</span>';
+      +'<span class="le-a">'+esc(e.action_type||'-')+'</span></span>'
+      +'<span class="le-tk">'+esc(e.result||'-')+'</span>';
     ledger.appendChild(d);
   });
 }

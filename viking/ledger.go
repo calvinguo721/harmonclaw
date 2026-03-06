@@ -9,12 +9,15 @@ import (
 	"path/filepath"
 )
 
+// LedgerEntry 等保 7 字段审计格式
 type LedgerEntry struct {
-	Timestamp string `json:"timestamp"`
-	Role      string `json:"role"`
-	Action    string `json:"action"`
-	Tokens    int    `json:"tokens"`
-	Status    string `json:"status"`
+	OperatorID string `json:"operator_id"`
+	ActionType string `json:"action_type"`
+	Resource   string `json:"resource"`
+	Result     string `json:"result"` // success | fail
+	ClientIP   string `json:"client_ip"`
+	Timestamp  string `json:"timestamp"`
+	ActionID   string `json:"action_id"`
 }
 
 type Ledger interface {
@@ -50,7 +53,7 @@ func (l *FileLedger) Record(entry LedgerEntry) {
 	select {
 	case l.ch <- entry:
 	default:
-		log.Printf("ledger channel full, dropping entry: %s", entry.Action)
+		log.Printf("ledger channel full, dropping entry: %s", entry.ActionType)
 	}
 }
 

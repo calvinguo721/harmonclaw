@@ -117,11 +117,29 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := s.Butler.HandleChat(req)
 	if err != nil {
+		s.Ledger.Record(viking.LedgerEntry{
+			OperatorID: "default",
+			ActionType: "chat",
+			Resource:   "chat",
+			Result:     "fail",
+			ClientIP:   r.RemoteAddr,
+			Timestamp:  time.Now().Format(time.RFC3339),
+			ActionID:   GetActionID(r.Context()),
+		})
 		Log(r.Context(), "butler chat error: %v", err)
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
 
+	s.Ledger.Record(viking.LedgerEntry{
+		OperatorID: "default",
+		ActionType: "chat",
+		Resource:   "chat",
+		Result:     "success",
+		ClientIP:   r.RemoteAddr,
+		Timestamp:  time.Now().Format(time.RFC3339),
+		ActionID:   GetActionID(r.Context()),
+	})
 	writeJSON(w, http.StatusOK, chatResponse{
 		Choices: []chatChoice{
 			{Message: llm.Message{Role: "assistant", Content: resp.Content}},
@@ -152,6 +170,15 @@ func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
 
 	check := s.Architect.HandleSkill(req.SkillID)
 	if !check.Allowed {
+		s.Ledger.Record(viking.LedgerEntry{
+			OperatorID: "default",
+			ActionType: "skill_exec",
+			Resource:   req.SkillID,
+			Result:     "fail",
+			ClientIP:   r.RemoteAddr,
+			Timestamp:  time.Now().Format(time.RFC3339),
+			ActionID:   GetActionID(r.Context()),
+		})
 		writeJSON(w, http.StatusForbidden, blockResponse{
 			Error:     "BLOCKED",
 			RiskLevel: "CRITICAL",
@@ -162,6 +189,15 @@ func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
 
 	sk, ok := skills.Registry[req.SkillID]
 	if !ok {
+		s.Ledger.Record(viking.LedgerEntry{
+			OperatorID: "default",
+			ActionType: "skill_exec",
+			Resource:   req.SkillID,
+			Result:     "success",
+			ClientIP:   r.RemoteAddr,
+			Timestamp:  time.Now().Format(time.RFC3339),
+			ActionID:   GetActionID(r.Context()),
+		})
 		writeJSON(w, http.StatusOK, map[string]string{
 			"status": check.Status,
 			"result": check.Result,
@@ -185,6 +221,20 @@ func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
 		LocalOnly: true,
 	}
 	output := sk.Execute(input)
+
+	result := "fail"
+	if output.Status == "ok" {
+		result = "success"
+	}
+	s.Ledger.Record(viking.LedgerEntry{
+		OperatorID: "default",
+		ActionType: "skill_exec",
+		Resource:   req.SkillID,
+		Result:     result,
+		ClientIP:   r.RemoteAddr,
+		Timestamp:  time.Now().Format(time.RFC3339),
+		ActionID:   GetActionID(r.Context()),
+	})
 	writeJSON(w, http.StatusOK, output)
 }
 

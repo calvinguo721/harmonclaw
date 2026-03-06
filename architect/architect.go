@@ -95,13 +95,6 @@ func (a *Agent) HandleSkill(skillID string) SkillResult {
 	}
 
 	log.Printf("architect: APPROVED skill=%q", skillID)
-	a.ledger.Record(viking.LedgerEntry{
-		Timestamp: time.Now().Format(time.RFC3339),
-		Role:      "system",
-		Action:    "skill:" + skillID,
-		Tokens:    0,
-		Status:    "executed",
-	})
 
 	return SkillResult{
 		Allowed: true,

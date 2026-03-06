@@ -105,13 +105,5 @@ func (a *Agent) HandleChat(req llm.Request) (llm.Response, error) {
 		log.Printf("butler: viking save assistant: %v", err)
 	}
 
-	a.ledger.Record(viking.LedgerEntry{
-		Timestamp: time.Now().Format(time.RFC3339),
-		Role:      "assistant",
-		Action:    "chat",
-		Tokens:    len(resp.Content) / 4,
-		Status:    "ok",
-	})
-
 	return resp, nil
 }

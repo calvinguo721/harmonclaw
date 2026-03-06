@@ -125,16 +125,15 @@ func (a *Agent) summarize() {
 		return
 	}
 
-	chatCount, skillCount, totalTokens := 0, 0, 0
+	chatCount, skillCount := 0, 0
 	for _, e := range entries {
-		totalTokens += e.Tokens
-		if e.Action == "chat" {
+		if e.ActionType == "chat" {
 			chatCount++
 		} else {
 			skillCount++
 		}
 	}
 
-	log.Printf("governor: DIGEST — chats=%d skills=%d tokens=%d entries_scanned=%d",
-		chatCount, skillCount, totalTokens, len(entries))
+	log.Printf("governor: DIGEST — chats=%d skills=%d entries_scanned=%d",
+		chatCount, skillCount, len(entries))
 }
