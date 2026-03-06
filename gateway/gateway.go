@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
 	"harmonclaw/architect"
 	"harmonclaw/butler"
 	"harmonclaw/governor"
+	"harmonclaw/governor/ironclaw"
 	"harmonclaw/llm"
 	"harmonclaw/skills"
 	"harmonclaw/viking"
@@ -26,9 +28,10 @@ type Server struct {
 	Butler    *butler.Agent
 	Architect *architect.Agent
 	Ledger    viking.Ledger
+	Policies  []ironclaw.Policy
 }
 
-func New(addr string, gov *governor.Agent, b *butler.Agent, a *architect.Agent, ledger viking.Ledger) *Server {
+func New(addr string, gov *governor.Agent, b *butler.Agent, a *architect.Agent, ledger viking.Ledger, policies []ironclaw.Policy) *Server {
 	s := &Server{
 		Addr:      addr,
 		Mux:       http.NewServeMux(),
@@ -36,6 +39,7 @@ func New(addr string, gov *governor.Agent, b *butler.Agent, a *architect.Agent, 
 		Butler:    b,
 		Architect: a,
 		Ledger:    ledger,
+		Policies:  policies,
 	}
 	s.routes()
 	return s
@@ -90,6 +94,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	for id := range skills.Registry {
 		skillNames = append(skillNames, id)
 	}
+	sort.Strings(skillNames)
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"governor":  map[string]any{"mode": SovereigntyMode, "status": govStatus},
@@ -181,6 +186,39 @@ func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer s.Governor.Quota().Release(userID)
+
+	token := ""
+	if ah := r.Header.Get("Authorization"); strings.HasPrefix(ah, "Bearer ") {
+		token = strings.TrimPrefix(ah, "Bearer ")
+	}
+	classification := "public"
+	if req.Args != nil && req.Args["classification"] != "" {
+		classification = req.Args["classification"]
+	}
+	if policy := s.findPolicy(skillID); policy.SkillID != "" {
+		if err := ironclaw.Enforce(policy, ironclaw.Request{
+			UserID:         userID,
+			SkillID:        skillID,
+			Token:          token,
+			Classification: classification,
+		}); err != nil {
+			s.Ledger.Record(viking.LedgerEntry{
+				OperatorID: "default",
+				ActionType: "skill_exec",
+				Resource:   skillID,
+				Result:     "fail",
+				ClientIP:   r.RemoteAddr,
+				Timestamp:  time.Now().Format(time.RFC3339),
+				ActionID:   GetActionID(r.Context()),
+			})
+			writeJSON(w, http.StatusForbidden, blockResponse{
+				Error:     "IRONCLAW",
+				RiskLevel: "CRITICAL",
+				Reason:    err.Error(),
+			})
+			return
+		}
+	}
 
 	check := s.Architect.HandleSkill(skillID)
 	if !check.Allowed {
@@ -316,4 +354,13 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
+}
+
+func (s *Server) findPolicy(skillID string) ironclaw.Policy {
+	for _, p := range s.Policies {
+		if p.SkillID == skillID {
+			return p
+		}
+	}
+	return ironclaw.Policy{}
 }

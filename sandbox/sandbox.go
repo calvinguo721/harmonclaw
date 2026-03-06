@@ -1,11 +1,12 @@
 package sandbox
 
 var approvedSkills = map[string]bool{
-	"skill_healthcheck": true,
-	"doc_perceiver":     true,
-	"openclaw_proxy":    true,
-	"web_search":        true,
-	"tts":               true,
+	"skill_healthcheck":  true,
+	"doc_perceiver":      true,
+	"openclaw_proxy":     true,
+	"web_search":         true,
+	"tts":                true,
+	"mimicclaw_proxy":    true,
 }
 
 type Guard interface {

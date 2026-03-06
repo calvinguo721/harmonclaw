@@ -15,12 +15,14 @@ import (
 	"harmonclaw/butler"
 	"harmonclaw/gateway"
 	"harmonclaw/governor"
+	"harmonclaw/governor/ironclaw"
 	"harmonclaw/llm"
 	"harmonclaw/sandbox"
 	"harmonclaw/skills"
 	"harmonclaw/viking"
 
 	_ "harmonclaw/skills/doc_perceiver"
+	_ "harmonclaw/skills/mimicclaw_adapter"
 	_ "harmonclaw/skills/openclaw_adapter"
 	_ "harmonclaw/skills/web_search"
 	_ "harmonclaw/skills/tts"
@@ -93,8 +95,17 @@ func main() {
 	a.Start()
 	gov.Start()
 
+	var policies []ironclaw.Policy
+	if path := os.Getenv("HC_IRONCLAW_POLICIES"); path != "" {
+		var err error
+		policies, err = ironclaw.LoadPolicies(path)
+		if err != nil {
+			log.Printf("ironclaw: load policies failed: %v", err)
+		}
+	}
+
 	// --- gateway ---
-	srv := gateway.New(":8080", gov, b, a, ledger)
+	srv := gateway.New(":8080", gov, b, a, ledger, policies)
 	log.Printf("HarmonClaw listening on %s  [sovereignty=%s]", srv.Addr, gateway.SovereigntyMode)
 	if err := srv.ListenAndServe(); err != nil {
 		log.Fatalf("server died: %v", err)
