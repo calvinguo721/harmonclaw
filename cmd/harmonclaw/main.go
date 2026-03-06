@@ -8,6 +8,7 @@ import (
 	"expvar"
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
@@ -139,7 +140,7 @@ func main() {
 
 	// --- three cores: Governor → Butler → Architect ---
 	gov := governor.New(ledger)
-	b := butler.New(provider, mem, ledger)
+	b := butler.NewWithOpts(provider, mem, ledger, cfg.VikingBaseDir(), "configs/persona.json")
 	a := architect.New(guard, ledger)
 
 	b.SetGrantFunc(gov.RequestGrant)
@@ -200,9 +201,23 @@ func main() {
 		version, rulesSHA, strings.Join(skillList, ", "),
 		gov.Status(), b.Status(), a.Status(), configsStr)
 
+	// --- Viking store, search, snapshot ---
+	kvStore := viking.NewKVStore()
+	searchIdx := viking.NewSearchIndexWithPath(filepath.Join(cfg.DataDir, "viking", "index.jsonl"))
+	snapDir := filepath.Join(cfg.DataDir, "viking", "snapshots")
+	snapMgr := viking.NewSnapshotManager(snapDir, cfg.VikingBaseDir(), 24)
+	gc := viking.NewGC(kvStore, snapMgr, filepath.Join(cfg.VikingBaseDir(), "engrams"), ledger)
+	gc.Start()
+
 	// --- gateway ---
 	addr := ":" + cfg.Port
 	srv := gateway.NewWithEngramDir(addr, gov, b, a, ledger, policies, version, cfg.VikingBaseDir())
+	srv.VikingStore = kvStore
+	srv.VikingSearch = searchIdx
+	srv.VikingSnap = snapMgr
+	rlCfg, _ := governor.LoadRateLimitConfig("configs/ratelimit.json")
+	srv.SetRateLimiter(governor.NewTripleRateLimiter(rlCfg))
+	srv.SetFirewall(governor.NewFirewall(ledger))
 	hclog.Infof("", "HarmonClaw listening on %s [sovereignty=%s]", srv.Addr, gateway.SovereigntyMode)
 	if err := srv.ListenAndServe(); err != nil {
 		hclog.Fatal("server died: %v", err)

@@ -1,11 +1,14 @@
-// Package butler (tts_stream) provides TTS streaming with audio chunk push.
+// Package butler (tts_stream) provides TTS streaming with sentence split and base64 per sentence.
 package butler
 
 import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"regexp"
+	"strings"
 	"sync"
+	"time"
 )
 
 // TTSChunk represents an audio chunk for streaming.
@@ -15,7 +18,7 @@ type TTSChunk struct {
 	Done  bool   `json:"done,omitempty"`
 }
 
-// TTSStreamer manages TTS chunk streaming.
+// TTSStreamer manages TTS chunk streaming with sentence split.
 type TTSStreamer struct {
 	mu     sync.Mutex
 	chunks []TTSChunk
@@ -25,6 +28,36 @@ type TTSStreamer struct {
 // NewTTSStreamer creates a streamer.
 func NewTTSStreamer() *TTSStreamer {
 	return &TTSStreamer{chunks: make([]TTSChunk, 0, 32)}
+}
+
+// sentenceSplitRe splits on sentence boundaries.
+var sentenceSplitRe = regexp.MustCompile(`[。！？.!?]\s*|\n+`)
+
+// PushText splits text into sentences and pushes base64 per sentence. First chunk target <500ms.
+func (t *TTSStreamer) PushText(text string, ttsFn func(sentence string) ([]byte, error)) error {
+	sentences := sentenceSplitRe.Split(text, -1)
+	var filtered []string
+	for _, s := range sentences {
+		s = strings.TrimSpace(s)
+		if s != "" {
+			filtered = append(filtered, s)
+		}
+	}
+	if len(filtered) == 0 {
+		return nil
+	}
+	firstChunkDeadline := time.Now().Add(500 * time.Millisecond)
+	for i, sent := range filtered {
+		audio, err := ttsFn(sent)
+		if err != nil {
+			return err
+		}
+		t.PushBase64(base64.StdEncoding.EncodeToString(audio))
+		if i == 0 && time.Now().After(firstChunkDeadline) {
+			// First chunk exceeded 500ms target; log or handle if needed
+		}
+	}
+	return nil
 }
 
 // Push adds an audio chunk (raw bytes, will be base64 encoded).

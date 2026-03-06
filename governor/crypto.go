@@ -125,3 +125,45 @@ func ed25519Verify(data, sig, pubKey []byte) bool {
 	}
 	return ed25519.Verify(pubKey, data, sig)
 }
+
+// EncryptForStorage encrypts sensitive (AES-GCM) or secret (encrypt+sign) data.
+func EncryptForStorage(plaintext []byte, classification string, encKey, signKey []byte) ([]byte, error) {
+	if classification != "sensitive" && classification != "secret" {
+		return plaintext, nil
+	}
+	ct, err := aesGCMEncrypt(plaintext, encKey)
+	if err != nil {
+		return nil, err
+	}
+	if classification == "secret" && len(signKey) >= ed25519.PrivateKeySize {
+		sig, _ := ed25519Sign(ct, signKey[:ed25519.PrivateKeySize])
+		return append(ct, sig...), nil
+	}
+	return ct, nil
+}
+
+// DecryptFromStorage decrypts and optionally verifies.
+func DecryptFromStorage(ciphertext []byte, classification string, encKey, pubKey []byte) ([]byte, error) {
+	if classification != "sensitive" && classification != "secret" {
+		return ciphertext, nil
+	}
+	if classification == "secret" && len(ciphertext) > ed25519.SignatureSize && len(pubKey) == ed25519.PublicKeySize {
+		ct := ciphertext[:len(ciphertext)-ed25519.SignatureSize]
+		sig := ciphertext[len(ciphertext)-ed25519.SignatureSize:]
+		if !ed25519Verify(ct, sig, pubKey) {
+			return nil, errors.New("signature verification failed")
+		}
+		ciphertext = ct
+	}
+	return aesGCMDecrypt(ciphertext, encKey)
+}
+
+// SignData signs data with private key.
+func SignData(data, privKey []byte) ([]byte, error) {
+	return ed25519Sign(data, privKey)
+}
+
+// VerifySignature verifies signature.
+func VerifySignature(data, sig, pubKey []byte) bool {
+	return ed25519Verify(data, sig, pubKey)
+}

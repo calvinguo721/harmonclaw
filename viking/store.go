@@ -1,7 +1,9 @@
-// Package viking (store) provides KV store with TTL and access control.
+// Package viking (store) provides Put/Get/Delete/List(prefix), TTL cleanup, classification.
 package viking
 
 import (
+	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -18,13 +20,13 @@ const (
 
 // StoreItem holds value with metadata.
 type StoreItem struct {
-	Value      string
-	Level      StoreLevel
-	ExpiresAt  time.Time
-	CreatedAt  time.Time
+	Value     string
+	Level     StoreLevel
+	ExpiresAt time.Time
+	CreatedAt time.Time
 }
 
-// KVStore is an in-memory key-value store with TTL.
+// KVStore is an in-memory key-value store with TTL and List(prefix).
 type KVStore struct {
 	mu    sync.RWMutex
 	items map[string]StoreItem
@@ -32,7 +34,22 @@ type KVStore struct {
 
 // NewKVStore creates a store.
 func NewKVStore() *KVStore {
-	return &KVStore{items: make(map[string]StoreItem)}
+	k := &KVStore{items: make(map[string]StoreItem)}
+	go k.ttlCleanupLoop()
+	return k
+}
+
+func (s *KVStore) ttlCleanupLoop() {
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
+	for range ticker.C {
+		s.Expire()
+	}
+}
+
+// Put stores a value. ttl=0 means no expiry.
+func (s *KVStore) Put(key, value string, level StoreLevel, ttl time.Duration) {
+	s.Set(key, value, level, ttl)
 }
 
 // Set stores a value. ttl=0 means no expiry.
@@ -74,6 +91,24 @@ func (s *KVStore) Delete(key string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.items, key)
+}
+
+// List returns keys with prefix, sorted.
+func (s *KVStore) List(prefix string) []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var out []string
+	for k, v := range s.items {
+		if prefix != "" && !strings.HasPrefix(k, prefix) {
+			continue
+		}
+		if !v.ExpiresAt.IsZero() && time.Now().After(v.ExpiresAt) {
+			continue
+		}
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // Expire cleans expired entries.

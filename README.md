@@ -51,11 +51,19 @@ go run ./cmd/harmonclaw/
 | GET | /v1/health | 健康检查，三核状态 + skills |
 | GET | /v1/governor/sovereignty | 当前主权模式与白名单 |
 | POST | /v1/governor/sovereignty | 切换主权模式（shadow/airlock/opensea） |
+| GET/POST | /v1/audit/query | 审计查询（time_from, time_to, operator_id, action_type, resource, offset, limit） |
+| GET | /v1/butler/persona | 人格列表与默认 |
+| POST | /v1/butler/persona | 切换人格（default） |
 | POST | /v1/chat/completions | 对话（支持 stream:true SSE） |
 | POST | /v1/skills/execute | 技能执行 |
 | POST | /v1/engram/inject | 记忆注入 |
 | GET | /v1/ledger/latest?limit=N | 最新审计记录（默认 20） |
 | GET | /v1/ledger/trace?action_id=xxx | 按 action_id 追踪链路 |
+| GET | /v1/architect/skills | 技能注册表（版本+健康） |
+| POST | /v1/architect/pipeline/execute | Pipeline 执行 |
+| GET | /v1/architect/crons | Cron 任务列表 |
+| GET | /v1/viking/snapshots | 快照列表 |
+| GET/POST | /v1/viking/search | 全文检索 |
 | POST | /v1/token | 获取 Bearer Token |
 | GET | /debug/vars | expvar 指标 |
 

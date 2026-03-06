@@ -102,6 +102,10 @@ func TestSmoke(t *testing.T) {
 	}()
 
 	srv := gateway.NewWithEngramDir(":18080", gov, b, a, ledger, policies, "v0.1.7-test", vikingDir)
+	srv.VikingStore = viking.NewKVStore()
+	srv.VikingSearch = viking.NewSearchIndexWithPath(filepath.Join(vikingDir, "index.jsonl"))
+	snapDir := filepath.Join(vikingDir, "snapshots")
+	srv.VikingSnap = viking.NewSnapshotManager(snapDir, vikingDir, 24)
 	go func() {
 		_ = srv.ListenAndServe()
 	}()
@@ -281,6 +285,84 @@ func TestSmoke(t *testing.T) {
 		defer resp.Body.Close()
 		if resp.StatusCode != 200 {
 			t.Errorf("debug/vars: want 200, got %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("audit_query", func(t *testing.T) {
+		resp, err := http.Get(baseURL + "/v1/audit/query")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 && resp.StatusCode != 501 && resp.StatusCode != 500 {
+			t.Errorf("audit query: want 200/501/500, got %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("persona_get", func(t *testing.T) {
+		resp, err := http.Get(baseURL + "/v1/butler/persona")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			t.Errorf("persona GET: want 200, got %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("architect_skills", func(t *testing.T) {
+		resp, err := http.Get(baseURL + "/v1/architect/skills")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			t.Errorf("architect skills: want 200, got %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("architect_pipeline", func(t *testing.T) {
+		body := []byte(`{"stages":[{"skill_id":"web_search","args":{"q":"test"}}]}`)
+		resp, err := http.Post(baseURL+"/v1/architect/pipeline/execute", "application/json", bytes.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 && resp.StatusCode != 502 {
+			t.Errorf("pipeline: want 200/502, got %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("architect_crons", func(t *testing.T) {
+		resp, err := http.Get(baseURL + "/v1/architect/crons")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			t.Errorf("architect crons: want 200, got %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("viking_snapshots", func(t *testing.T) {
+		resp, err := http.Get(baseURL + "/v1/viking/snapshots")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 && resp.StatusCode != 501 {
+			t.Errorf("viking snapshots: want 200/501, got %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("viking_search", func(t *testing.T) {
+		resp, err := http.Get(baseURL + "/v1/viking/search?q=test")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 && resp.StatusCode != 501 {
+			t.Errorf("viking search: want 200/501, got %d", resp.StatusCode)
 		}
 	})
 }

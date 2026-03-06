@@ -93,19 +93,28 @@ input,textarea{border:none;outline:none;background:none;color:inherit;font:inher
 .btn-send:disabled{opacity:.4;cursor:default}
 
 /* ══════ Right: Architect (Green) ══════ */
-.arch{width:260px;min-width:260px;display:flex;flex-direction:column;border-left:1px solid var(--bdr);background:linear-gradient(180deg,var(--surf) 0%,#121a14 100%)}
+.arch{width:280px;min-width:280px;display:flex;flex-direction:column;border-left:1px solid var(--bdr);background:linear-gradient(180deg,var(--surf) 0%,#121a14 100%)}
 @media(max-width:900px){.arch{width:100%;min-width:0;border-left:none;border-top:1px solid var(--bdr)}}
 .arch-header{padding:.6rem .8rem;font-size:.58rem;letter-spacing:.1em;color:var(--arch);text-transform:uppercase;border-bottom:1px solid var(--bdr)}
 .arch-body{flex:1;overflow-y:auto;padding:.5rem}
 .skill-list{display:flex;flex-direction:column;gap:.25rem}
 .btn-skill{padding:.4rem .6rem;border-radius:6px;font-size:.7rem;text-align:left;background:var(--surf2);color:var(--txt2);border:1px solid transparent;transition:all .15s}
 .btn-skill:hover{background:var(--arch-glow);color:var(--arch);border-color:var(--arch)}
-.arch-log{font-family:monospace;font-size:.65rem;line-height:1.6;color:var(--txt2);white-space:pre-wrap;word-break:break-all;margin-top:.5rem;padding:.4rem;background:var(--bg);border-radius:6px;max-height:120px;overflow-y:auto}
+.skill-health{font-size:.55rem;color:var(--txt3);margin-left:.3rem}
+.skill-health.ok{color:var(--arch)}
+.skill-health.err{color:var(--gov)}
+.arch-log{font-family:monospace;font-size:.65rem;line-height:1.6;color:var(--txt2);white-space:pre-wrap;word-break:break-all;margin-top:.5rem;padding:.4rem;background:var(--bg);border-radius:6px;max-height:100px;overflow-y:auto}
 .t-ok{color:var(--arch)}.t-err{color:var(--gov)}.t-p{color:var(--butler)}
 .arch-bar{display:flex;gap:.3rem;padding:.4rem .5rem;border-top:1px solid var(--bdr)}
 .arch-in{flex:1;padding:.3rem .5rem;border-radius:5px;font-size:.68rem;font-family:monospace;background:var(--bg);border:1px solid var(--bdr)}
 .arch-in:focus{border-color:var(--arch)}
 .btn-ex{padding:.3rem .6rem;border-radius:5px;font-size:.65rem;font-weight:700;background:var(--arch);color:var(--bg)}
+.arch-section{font-size:.55rem;color:var(--txt3);text-transform:uppercase;margin:.5rem 0 .25rem}
+.cron-list,.pipeline-list{font-size:.65rem;max-height:60px;overflow-y:auto}
+
+/* ══════ Bottom Status Bar ══════ */
+.status-bar{display:flex;gap:1.5rem;padding:.25rem 1rem;font-size:.6rem;color:var(--txt3);background:var(--surf);border-top:1px solid var(--bdr)}
+.status-bar span{font-family:monospace}
 </style>
 </head>
 <body>
@@ -132,13 +141,26 @@ input,textarea{border:none;outline:none;background:none;color:inherit;font:inher
     <div class="gov-body">
       <div class="stat-row"><span class="stat-k">Mode</span><span class="stat-v" id="sMode">AIRLOCK</span></div>
       <div class="stat-row"><span class="stat-k">Health</span><span class="stat-v" id="sHealth">—</span></div>
-      <div class="ledger-title">Ledger</div>
+      <div class="ledger-title">Recent Ledger</div>
       <div class="ledger-list" id="ledger"></div>
+      <div class="ledger-title">限流</div>
+      <div class="stat-row"><span class="stat-k">状态</span><span class="stat-v" id="rateLimitStatus">—</span></div>
+      <div class="ledger-title">最近封禁</div>
+      <div class="ban-list" id="banList"></div>
+      <div class="ledger-title">审计查询</div>
+      <input class="stat-row" id="auditQuery" placeholder="resource 或 action_type" style="width:100%;padding:.3rem">
+      <button class="btn-token" id="auditBtn" style="margin-top:.2rem">Query</button>
+      <pre id="auditResult" style="font-size:.6rem;max-height:80px;overflow:auto;margin-top:.2rem"></pre>
     </div>
   </aside>
 
   <main class="butler">
-    <div class="butler-header"><h1 class="butler-brand">Butler / Life</h1></div>
+    <div class="butler-header" style="display:flex;align-items:center;gap:1rem">
+      <h1 class="butler-brand">Butler / Life</h1>
+      <select id="personaSelect" style="padding:.2rem .5rem;font-size:.7rem;background:var(--surf2);border:1px solid var(--bdr);border-radius:4px;color:var(--txt)">
+        <option value="default">default</option>
+      </select>
+    </div>
     <div class="chat-body" id="chatBody">
       <div class="chat-flow" id="chatFlow"></div>
     </div>
@@ -151,7 +173,13 @@ input,textarea{border:none;outline:none;background:none;color:inherit;font:inher
   <aside class="arch">
     <div class="arch-header">Architect / Skills</div>
     <div class="arch-body">
+      <div class="arch-section">Registry (version+health)</div>
       <div class="skill-list" id="skillList"></div>
+      <div class="arch-section">Pipeline</div>
+      <input id="pipelineInput" placeholder="input text" style="width:100%;padding:.3rem;font-size:.65rem;margin-bottom:.2rem">
+      <button class="btn-ex" id="pipelineBtn" style="margin-bottom:.5rem">Run Pipeline</button>
+      <div class="arch-section">Crons</div>
+      <div class="cron-list" id="cronList"></div>
       <div class="arch-log" id="archLog"><span class="t-p">hclaw&gt;</span> ready</div>
     </div>
     <div class="arch-bar">
@@ -159,6 +187,13 @@ input,textarea{border:none;outline:none;background:none;color:inherit;font:inher
       <button class="btn-ex" id="btnEx">EXEC</button>
     </div>
   </aside>
+</div>
+
+<div class="status-bar" id="statusBar">
+  <span>goroutine: <span id="statGoroutine">—</span></span>
+  <span>heap: <span id="statHeap">—</span></span>
+  <span>outbound: <span id="statOutbound">—</span></span>
+  <span>bus: <span id="statBus">—</span></span>
 </div>
 
 <div class="trace-panel" id="tracePanel">
@@ -228,15 +263,54 @@ async function refreshHealth(){
     if(s.mode){document.documentElement.setAttribute('data-mode',s.mode);sMode.textContent=s.mode.toUpperCase();
       $$('.sv').forEach(x=>{x.classList.toggle('active',x.dataset.m===s.mode)});
     }
-    if(Array.isArray(h.architect?.registered_skills)){renderSkills(h.architect.registered_skills)}
+    if(Array.isArray(h.architect?.registered_skills)){renderSkillsFromHealth(h.architect.registered_skills)}
+    refreshPersona();refreshCrons();refreshBanList();refreshRateLimitStatus();
   }catch(_){healthDot.className='health-dot err';sHealth.textContent='OFF'}
 }
-function renderSkills(skills){
+async function refreshBanList(){
+  try{const r=await fetch('/v1/audit/query?action_type=firewall_ban&limit=5',{headers:authHeaders()});
+  const d=await r.json();const el=$('#banList');el.innerHTML='';const arr=Array.isArray(d)?d:(d.results||[]);arr.slice(0,5).forEach(e=>{const div=document.createElement('div');div.className='le';div.setAttribute('data-s','fail');div.innerHTML='<span>'+esc(e.resource||e.client_ip||'-')+'</span>';el.appendChild(div)})}catch(_){}
+}
+async function refreshRateLimitStatus(){
+  try{$('#rateLimitStatus').textContent='OK'}catch(_){$('#rateLimitStatus').textContent='—'}
+}
+async function refreshPersona(){
+  try{const r=await fetch('/v1/butler/persona',{headers:authHeaders()});
+  const d=await r.json();if(r.ok&&d.personas){const sel=$('#personaSelect');const prev=sel.value;sel.innerHTML='';(d.personas||[]).forEach(p=>{const o=document.createElement('option');o.value=p;o.textContent=p;o.selected=p===d.default;sel.appendChild(o)});if(prev&&prev!==sel.value)sel.value=prev}catch(_){}
+}
+$('#personaSelect').addEventListener('change',async()=>{
+  const p=$('#personaSelect').value;if(!p)return;
+  try{const r=await fetch('/v1/butler/persona',{method:'POST',headers:authHeaders(),body:JSON.stringify({default:p})});
+  if(!r.ok){const d=await r.json();alert(d.error||'Failed')}}catch(e){alert(e.message)}
+});
+async function refreshCrons(){
+  try{const r=await fetch('/v1/architect/crons',{headers:authHeaders()});
+  const d=await r.json();if(r.ok&&d.crons){const el=$('#cronList');el.innerHTML='';(d.crons||[]).forEach(c=>{const div=document.createElement('div');div.textContent=(c.id||c.ID||'')+' '+esc(c.expr||c.Expr||'');el.appendChild(div)})}}catch(_){}
+}
+async function refreshArchitectSkills(){
+  try{const r=await fetch('/v1/architect/skills',{headers:authHeaders()});
+  const d=await r.json();if(r.ok&&d.skills){renderSkillsWithMeta(d.skills)}}catch(_){}
+}
+function renderSkillsFromHealth(skills){
   skillList.innerHTML='';
   (skills||[]).forEach(sk=>{
     const b=document.createElement('button');
-    b.className='btn-skill';b.textContent=sk;b.dataset.sk=sk;
+    b.className='btn-skill';b.innerHTML=esc(sk);b.dataset.sk=sk;
     b.addEventListener('click',()=>showSkillExecModal(sk));
+    skillList.appendChild(b);
+  });
+}
+function renderSkillsWithMeta(skills){
+  skillList.innerHTML='';
+  (skills||[]).forEach(s=>{
+    const b=document.createElement('button');
+    b.className='btn-skill';
+    const id=s.id||s.ID||'?';
+    const v=s.version||s.Version||'';
+    const h=s.healthy?'ok':'err';
+    b.innerHTML=esc(id)+' <span class="skill-health '+h+'">'+esc(v)+'</span>';
+    b.dataset.sk=id;
+    b.addEventListener('click',()=>showSkillExecModal(id));
     skillList.appendChild(b);
   });
 }
@@ -268,6 +342,30 @@ async function doSkillExec(skillId){
   }catch(e){resultEl.textContent=e.message;tlog('<span class="t-err">[NET] '+esc(e.message)+'</span>')}
 }
 setInterval(refreshHealth,4000);refreshHealth();
+setInterval(refreshArchitectSkills,8000);refreshArchitectSkills();
+
+$('#auditBtn').addEventListener('click',async()=>{
+  const q=$('#auditQuery').value.trim();
+  const params=new URLSearchParams();
+  if(q){params.set('resource',q);params.set('action_type',q)}
+  try{const r=await fetch('/v1/audit/query?'+params,{headers:authHeaders()});
+  const d=await r.json();$('#auditResult').textContent=JSON.stringify(d,null,2)}catch(e){$('#auditResult').textContent=e.message}
+});
+
+$('#pipelineBtn').addEventListener('click',async()=>{
+  const input=$('#pipelineInput').value.trim();
+  const skills=skillList.querySelectorAll('.btn-skill');
+  const stages=[];skills.forEach((b,i)=>{if(i<3)stages.push({skill_id:b.dataset.sk,args:{}})});
+  if(stages.length===0){tlog('<span class="t-err">No skills - wait for registry load</span>');return}
+  try{const r=await fetch('/v1/architect/pipeline/execute',{method:'POST',headers:authHeaders(),body:JSON.stringify({stages,input:input||'test'})});
+  const d=await r.json();tlog('<span class="t-ok">Pipeline: '+esc(JSON.stringify(d).slice(0,120))+'</span>')}catch(e){tlog('<span class="t-err">'+esc(e.message)+'</span>')}
+});
+
+async function refreshStatusBar(){
+  try{const r=await fetch('/debug/vars',{headers:authHeaders()});
+  const d=await r.json();$('#statGoroutine').textContent=d.goroutine_count??'—';$('#statHeap').textContent=formatBytes(d.heap_alloc_bytes??0);$('#statOutbound').textContent=d.outbound_http_total??'—';$('#statBus').textContent='—'}catch(_){$('#statGoroutine').textContent='—'}}
+function formatBytes(n){if(typeof n!=='number')return n;if(n<1024)return n+'B';if(n<1048576)return (n/1024).toFixed(1)+'KB';return (n/1048576).toFixed(1)+'MB'}
+setInterval(refreshStatusBar,5000);refreshStatusBar();
 
 /* Chat */
 chatIn.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}});
@@ -409,6 +507,17 @@ async function execSkill(){
 
 function tlog(h){archLog.innerHTML+='\n'+h;archLog.scrollTop=archLog.scrollHeight}
 function esc(s){const d=document.createElement('div');d.textContent=String(s);return d.innerHTML}
+
+/* TTS AudioContext playback */
+let audioCtx=null;
+function playBase64Audio(base64){
+  if(!audioCtx)audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+  const bin=atob(base64);const buf=new ArrayBuffer(bin.length);const view=new Uint8Array(buf);
+  for(let i=0;i<bin.length;i++)view[i]=bin.charCodeAt(i);
+  audioCtx.decodeAudioData(buf).then(decoded=>{
+    const src=audioCtx.createBufferSource();src.buffer=decoded;src.connect(audioCtx.destination);src.start(0);
+  }).catch(e=>console.warn('TTS decode:',e));
+}
 </script>
 </body>
 </html>

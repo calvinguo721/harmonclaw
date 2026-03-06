@@ -1,8 +1,9 @@
-// Package governor (audit) provides audit engine with query and CSV export.
+// Package governor (audit) provides audit engine with query and CSV/JSONL export.
 package governor
 
 import (
 	"encoding/csv"
+	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -27,13 +28,17 @@ type QueryFilter struct {
 	TimeTo     time.Time
 	OperatorID string
 	ActionType string
+	Resource   string
+	Offset     int
+	Limit      int
 }
 
-// Query returns entries matching the filter.
+// Query returns entries matching the filter with pagination.
 func (a *AuditEngine) Query(f QueryFilter) ([]viking.LedgerEntry, error) {
 	lf := viking.LedgerQueryFilter{
 		OperatorID: f.OperatorID,
 		ActionType: f.ActionType,
+		Resource:   f.Resource,
 	}
 	if !f.TimeFrom.IsZero() {
 		lf.TimeFrom = f.TimeFrom.Format(time.RFC3339)
@@ -41,7 +46,33 @@ func (a *AuditEngine) Query(f QueryFilter) ([]viking.LedgerEntry, error) {
 	if !f.TimeTo.IsZero() {
 		lf.TimeTo = f.TimeTo.Format(time.RFC3339)
 	}
-	return a.ledger.Query(lf)
+	entries, err := a.ledger.Query(lf)
+	if err != nil {
+		return nil, err
+	}
+	if f.Offset > 0 || f.Limit > 0 {
+		if f.Offset > len(entries) {
+			return []viking.LedgerEntry{}, nil
+		}
+		start := f.Offset
+		end := len(entries)
+		if f.Limit > 0 && start+f.Limit < end {
+			end = start + f.Limit
+		}
+		entries = entries[start:end]
+	}
+	return entries, nil
+}
+
+// ExportJSONL writes entries as JSONL.
+func (a *AuditEngine) ExportJSONL(entries []viking.LedgerEntry, w io.Writer) error {
+	enc := json.NewEncoder(w)
+	for _, e := range entries {
+		if err := enc.Encode(e); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // ExportCSV writes entries to w in CSV format.

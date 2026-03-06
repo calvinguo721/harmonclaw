@@ -26,6 +26,14 @@ func authEnabled() bool {
 	return os.Getenv("HC_AUTH_ENABLED") == "true"
 }
 
+type skillGuard struct {
+	*architect.Architect
+}
+
+func (g skillGuard) CheckSkill(id string) (bool, string) {
+	return g.Architect.CheckSkill(id)
+}
+
 var SovereigntyMode = "airlock"
 
 type Server struct {
@@ -38,6 +46,12 @@ type Server struct {
 	Policies      []ironclaw.Policy
 	Version       string
 	EngramBaseDir string
+	Audit         *governor.AuditEngine
+	VikingStore   *viking.KVStore
+	VikingSearch  *viking.SearchIndex
+	VikingSnap    *viking.SnapshotManager
+	Firewall      *governor.Firewall
+	RateLimiter   *governor.TripleRateLimiter
 }
 
 func New(addr string, gov *governor.Governor, b *butler.Butler, a *architect.Architect, ledger viking.Ledger, policies []ironclaw.Policy, version string) *Server {
@@ -56,6 +70,9 @@ func NewWithEngramDir(addr string, gov *governor.Governor, b *butler.Butler, a *
 		Version:       version,
 		EngramBaseDir: engramBaseDir,
 	}
+	if ql, ok := ledger.(viking.QueryableLedger); ok {
+		s.Audit = governor.NewAuditEngine(ql)
+	}
 	s.routes()
 	return s
 }
@@ -72,6 +89,16 @@ func (s *Server) routes() {
 	s.Mux.HandleFunc("POST /v1/token", s.handleToken)
 	s.Mux.HandleFunc("GET /v1/test/illegal", s.handleTestIllegal)
 	s.Mux.HandleFunc("GET /v1/test/panic", s.handleTestPanic)
+	s.Mux.HandleFunc("GET /v1/audit/query", s.handleAuditQuery)
+	s.Mux.HandleFunc("POST /v1/audit/query", s.handleAuditQuery)
+	s.Mux.HandleFunc("GET /v1/butler/persona", s.handlePersonaGet)
+	s.Mux.HandleFunc("POST /v1/butler/persona", s.handlePersonaPost)
+	s.Mux.HandleFunc("GET /v1/architect/skills", s.handleArchitectSkills)
+	s.Mux.HandleFunc("POST /v1/architect/pipeline/execute", s.handlePipelineExecute)
+	s.Mux.HandleFunc("GET /v1/architect/crons", s.handleArchitectCrons)
+	s.Mux.HandleFunc("GET /v1/viking/snapshots", s.handleVikingSnapshots)
+	s.Mux.HandleFunc("GET /v1/viking/search", s.handleVikingSearch)
+	s.Mux.HandleFunc("POST /v1/viking/search", s.handleVikingSearch)
 	s.Mux.Handle("GET /debug/vars", expvar.Handler())
 
 	s.Mux.Handle("GET /static/", http.StripPrefix("/static", http.FileServer(http.Dir("web"))))
@@ -84,11 +111,12 @@ func (s *Server) routes() {
 	}))
 }
 
+func (s *Server) SetFirewall(f *governor.Firewall) { s.Firewall = f }
+func (s *Server) SetRateLimiter(r *governor.TripleRateLimiter) { s.RateLimiter = r }
+
 func (s *Server) ListenAndServe() error {
-	h := recoverMiddleware(s.Ledger, actionMiddleware(sovereigntyWall(s.Mux)))
-	if authEnabled() {
-		h = authMiddleware(h)
-	}
+	h := Chain(s.Mux, s.Ledger, s.Firewall, s.RateLimiter, authEnabled())
+	h = CORS(h)
 	return http.ListenAndServe(s.Addr, h)
 }
 
@@ -625,6 +653,193 @@ func (s *Server) handleTestIllegal(w http.ResponseWriter, _ *http.Request) {
 
 func (s *Server) handleTestPanic(w http.ResponseWriter, _ *http.Request) {
 	panic("smoke test panic")
+}
+
+func (s *Server) handleAuditQuery(w http.ResponseWriter, r *http.Request) {
+	if s.Audit == nil {
+		writeError(w, http.StatusNotImplemented, "audit not available")
+		return
+	}
+	var req struct {
+		TimeFrom   string `json:"time_from"`
+		TimeTo     string `json:"time_to"`
+		OperatorID string `json:"operator_id"`
+		ActionType string `json:"action_type"`
+		Resource   string `json:"resource"`
+		Offset     int    `json:"offset"`
+		Limit      int    `json:"limit"`
+	}
+	if r.Method == http.MethodPost {
+		body, _ := io.ReadAll(r.Body)
+		r.Body.Close()
+		json.Unmarshal(body, &req)
+	} else {
+		req.TimeFrom = r.URL.Query().Get("time_from")
+		req.TimeTo = r.URL.Query().Get("time_to")
+		req.OperatorID = r.URL.Query().Get("operator_id")
+		req.ActionType = r.URL.Query().Get("action_type")
+		req.Resource = r.URL.Query().Get("resource")
+		if n, err := strconv.Atoi(r.URL.Query().Get("offset")); err == nil {
+			req.Offset = n
+		}
+		if n, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil {
+			req.Limit = n
+		}
+	}
+	f := governor.QueryFilter{
+		OperatorID: req.OperatorID,
+		ActionType: req.ActionType,
+		Resource:   req.Resource,
+		Offset:     req.Offset,
+		Limit:      req.Limit,
+	}
+	if req.TimeFrom != "" {
+		t, _ := time.Parse(time.RFC3339, req.TimeFrom)
+		f.TimeFrom = t
+	}
+	if req.TimeTo != "" {
+		t, _ := time.Parse(time.RFC3339, req.TimeTo)
+		f.TimeTo = t
+	}
+	entries, err := s.Audit.Query(f)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, entries)
+}
+
+func (s *Server) handlePersonaGet(w http.ResponseWriter, _ *http.Request) {
+	if s.Butler == nil || s.Butler.Persona() == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"personas": []string{}, "default": "default"})
+		return
+	}
+	ps := s.Butler.Persona()
+	writeJSON(w, http.StatusOK, map[string]any{
+		"personas": ps.List(),
+		"default": ps.Default(),
+	})
+}
+
+func (s *Server) handlePersonaPost(w http.ResponseWriter, r *http.Request) {
+	if s.Butler == nil || s.Butler.Persona() == nil {
+		writeError(w, http.StatusNotImplemented, "persona not available")
+		return
+	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "failed to read body")
+		return
+	}
+	r.Body.Close()
+	var req struct {
+		ID       string         `json:"id"`
+		Persona  butler.PersonaConfig `json:"persona"`
+		Default  string         `json:"default"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	ps := s.Butler.Persona()
+	if req.ID != "" && req.Persona.SystemPrompt != "" {
+		ps.Set(req.ID, req.Persona)
+	}
+	if req.Default != "" {
+		ps.SetDefault(req.Default)
+	}
+	ps.Save()
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *Server) handleArchitectSkills(w http.ResponseWriter, _ *http.Request) {
+	if s.Architect == nil || s.Architect.Registry() == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"skills": []any{}})
+		return
+	}
+	reg := s.Architect.Registry()
+	ids := reg.List()
+	var skills []map[string]any
+	for _, id := range ids {
+		meta, _ := reg.Meta(id)
+		skills = append(skills, map[string]any{
+			"id": meta.ID, "version": meta.Version, "healthy": meta.Healthy,
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"skills": skills})
+}
+
+func (s *Server) handlePipelineExecute(w http.ResponseWriter, r *http.Request) {
+	actionID := GetActionID(r.Context())
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "failed to read body")
+		return
+	}
+	r.Body.Close()
+	var req struct {
+		Stages []architect.PipelineStage `json:"stages"`
+		Input  string                    `json:"input"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if len(req.Stages) == 0 {
+		writeError(w, http.StatusBadRequest, "stages required")
+		return
+	}
+	if req.Input == "" {
+		req.Input = ""
+	}
+	pipe := architect.NewPipeline(s.Architect.Pool(), skillGuard{s.Architect}, s.Ledger, req.Stages)
+	out, err := pipe.Run(r.Context(), actionID, req.Input, s.Architect.Registry())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) handleArchitectCrons(w http.ResponseWriter, _ *http.Request) {
+	if s.Architect == nil || s.Architect.Crons() == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"crons": []any{}})
+		return
+	}
+	jobs := s.Architect.Crons().List()
+	writeJSON(w, http.StatusOK, map[string]any{"crons": jobs})
+}
+
+func (s *Server) handleVikingSnapshots(w http.ResponseWriter, _ *http.Request) {
+	if s.VikingSnap == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"snapshots": []string{}})
+		return
+	}
+	list := s.VikingSnap.ListSnapshots()
+	writeJSON(w, http.StatusOK, map[string]any{"snapshots": list})
+}
+
+func (s *Server) handleVikingSearch(w http.ResponseWriter, r *http.Request) {
+	if s.VikingSearch == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"results": []string{}})
+		return
+	}
+	query := r.URL.Query().Get("q")
+	if query == "" && r.Method == http.MethodPost {
+		var req struct {
+			Query string `json:"query"`
+		}
+		body, _ := io.ReadAll(r.Body)
+		r.Body.Close()
+		json.Unmarshal(body, &req)
+		query = req.Query
+	}
+	if query == "" {
+		writeError(w, http.StatusBadRequest, "query required")
+		return
+	}
+	ids := s.VikingSearch.Search(query)
+	writeJSON(w, http.StatusOK, map[string]any{"results": ids})
 }
 
 // --- request/response types ---

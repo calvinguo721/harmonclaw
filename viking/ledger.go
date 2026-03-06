@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync/atomic"
 )
 
 // LedgerEntry 等保 7 字段审计格式
@@ -36,6 +37,7 @@ type LedgerQueryFilter struct {
 	TimeTo     string
 	OperatorID string
 	ActionType string
+	Resource   string
 }
 
 // QueryableLedger supports filtered queries.
@@ -45,8 +47,9 @@ type QueryableLedger interface {
 }
 
 type FileLedger struct {
-	fpath string
-	ch    chan LedgerEntry
+	fpath  string
+	ch     chan LedgerEntry
+	closed atomic.Bool
 }
 
 // NewFileLedger creates a ledger. If ledgerDir is empty, uses ~/.harmonclaw/ledger.
@@ -71,6 +74,10 @@ func NewFileLedger(ledgerDir string) (*FileLedger, error) {
 }
 
 func (l *FileLedger) Record(entry LedgerEntry) {
+	if l.closed.Load() {
+		return
+	}
+	defer func() { _ = recover() }() // ignore panic from send on closed channel
 	select {
 	case l.ch <- entry:
 	default:
@@ -79,6 +86,9 @@ func (l *FileLedger) Record(entry LedgerEntry) {
 }
 
 func (l *FileLedger) Close() {
+	if l.closed.Swap(true) {
+		return
+	}
 	close(l.ch)
 }
 
@@ -196,6 +206,9 @@ func (l *FileLedger) Query(filter LedgerQueryFilter) ([]LedgerEntry, error) {
 			continue
 		}
 		if filter.ActionType != "" && e.ActionType != filter.ActionType {
+			continue
+		}
+		if filter.Resource != "" && e.Resource != filter.Resource {
 			continue
 		}
 		if filter.TimeFrom != "" && e.Timestamp < filter.TimeFrom {

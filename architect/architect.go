@@ -23,26 +23,53 @@ type SkillResult struct {
 }
 
 type Architect struct {
-	guard  sandbox.Guard
-	ledger viking.Ledger
-	pool   *WorkerPool
+	guard   sandbox.Guard
+	ledger  viking.Ledger
+	pool    *WorkerPool
 	grantFn func(string, string) bool
+
+	registry *SkillRegistry
+	crons    *CronStore
 
 	mu     sync.Mutex
 	status string
 }
 
 func New(guard sandbox.Guard, ledger viking.Ledger) *Architect {
-	return &Architect{
-		guard:  guard,
-		ledger: ledger,
-		pool:   NewWorkerPool(),
-		status: "ok",
+	a := &Architect{
+		guard:   guard,
+		ledger:  ledger,
+		pool:    NewWorkerPool(),
+		status:  "ok",
+		registry: NewSkillRegistry(),
 	}
+	a.registry.SyncFromGlobal()
+	if cs, err := NewCronStore("configs/crons.json"); err == nil {
+		a.crons = cs
+		a.crons.Start(func(job CronJob) {
+			args := job.Args
+			if args == nil {
+				args = make(map[string]string)
+			}
+			a.ExecuteSkill(job.SkillID, skills.SkillInput{
+				TraceID: "cron-" + job.ID,
+				Text:    "",
+				Args:    args,
+			})
+		})
+	}
+	return a
 }
 
 func (a *Architect) SetGrantFunc(fn func(string, string) bool) { a.grantFn = fn }
 func (a *Architect) Pool() *WorkerPool                        { return a.pool }
+func (a *Architect) Registry() *SkillRegistry                 { return a.registry }
+func (a *Architect) Crons() *CronStore {
+	if a == nil {
+		return nil
+	}
+	return a.crons
+}
 
 func (a *Architect) Status() string {
 	a.mu.Lock()
@@ -89,7 +116,10 @@ func (a *Architect) ExecuteSkill(skillID string, input skills.SkillInput) (skill
 			Error:   check.Verdict,
 		}, nil
 	}
-	sk, ok := skills.Registry[skillID]
+	sk, ok := a.registry.Get(skillID)
+	if !ok {
+		sk, ok = skills.Registry[skillID]
+	}
 	if !ok {
 		data, _ := json.Marshal(map[string]string{"status": check.Status})
 		return skills.SkillOutput{
@@ -117,6 +147,10 @@ func (a *Architect) ExecuteSkill(skillID string, input skills.SkillInput) (skill
 
 func (a *Architect) RegisterSkill(name string, skill skills.Skill) {
 	skills.Register(skill)
+}
+
+func (a *Architect) CheckSkill(skillID string) (bool, string) {
+	return a.guard.CheckSkill(skillID)
 }
 
 func (a *Architect) HandleSkill(skillID string) SkillResult {

@@ -38,12 +38,23 @@ func InitSecureClient(ledger viking.Ledger, mode string, allowedDomains []string
 	})
 }
 
-// SetSovereigntyMode updates mode and whitelist at runtime.
+// SetSovereigntyMode updates mode and whitelist at runtime. Writes change to Ledger.
 func SetSovereigntyMode(mode string, allowedDomains []string) {
 	clientMu.Lock()
-	defer clientMu.Unlock()
+	oldMode := clientMode
 	clientMode = mode
 	clientDomains = allowedDomains
+	clientMu.Unlock()
+	if clientLedger != nil && oldMode != mode {
+		clientLedger.Record(viking.LedgerEntry{
+			OperatorID: "governor",
+			ActionType: "sovereignty_switch",
+			Resource:   mode,
+			Result:     "success",
+			Timestamp:  time.Now().Format(time.RFC3339),
+			ActionID:   "",
+		})
+	}
 }
 
 // GetSovereigntyMode returns current mode and whitelist.
