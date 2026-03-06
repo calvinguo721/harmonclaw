@@ -8,6 +8,8 @@ import (
 	"log"
 	"os"
 	"runtime"
+	"sort"
+	"strings"
 
 	"harmonclaw/architect"
 	"harmonclaw/butler"
@@ -15,11 +17,13 @@ import (
 	"harmonclaw/governor"
 	"harmonclaw/llm"
 	"harmonclaw/sandbox"
+	"harmonclaw/skills"
 	"harmonclaw/viking"
 
 	_ "harmonclaw/skills/doc_perceiver"
 	_ "harmonclaw/skills/openclaw_adapter"
 	_ "harmonclaw/skills/web_search"
+	_ "harmonclaw/skills/tts"
 )
 
 func init() {
@@ -42,7 +46,12 @@ func main() {
 	} else {
 		rulesSHA = "unavailable"
 	}
-	log.Printf("[BOOT] version=%s rules_sha256=%s", version, rulesSHA)
+	skillList := make([]string, 0, len(skills.Registry))
+	for id := range skills.Registry {
+		skillList = append(skillList, id)
+	}
+	sort.Strings(skillList)
+	log.Printf("[BOOT] version=%s rules_sha256=%s skills=[%s]", version, rulesSHA, strings.Join(skillList, ", "))
 
 	// --- infrastructure ---
 	provider, err := llm.NewDeepSeekClient()
