@@ -105,7 +105,7 @@ func main() {
 	}
 
 	// --- gateway ---
-	srv := gateway.New(":8080", gov, b, a, ledger, policies)
+	srv := gateway.New(":8080", gov, b, a, ledger, policies, version)
 	log.Printf("HarmonClaw listening on %s  [sovereignty=%s]", srv.Addr, gateway.SovereigntyMode)
 	if err := srv.ListenAndServe(); err != nil {
 		log.Fatalf("server died: %v", err)

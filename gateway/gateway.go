@@ -29,9 +29,10 @@ type Server struct {
 	Architect *architect.Agent
 	Ledger    viking.Ledger
 	Policies  []ironclaw.Policy
+	Version   string
 }
 
-func New(addr string, gov *governor.Agent, b *butler.Agent, a *architect.Agent, ledger viking.Ledger, policies []ironclaw.Policy) *Server {
+func New(addr string, gov *governor.Agent, b *butler.Agent, a *architect.Agent, ledger viking.Ledger, policies []ironclaw.Policy, version string) *Server {
 	s := &Server{
 		Addr:      addr,
 		Mux:       http.NewServeMux(),
@@ -40,6 +41,7 @@ func New(addr string, gov *governor.Agent, b *butler.Agent, a *architect.Agent, 
 		Architect: a,
 		Ledger:    ledger,
 		Policies:  policies,
+		Version:   version,
 	}
 	s.routes()
 	return s
@@ -54,7 +56,14 @@ func (s *Server) routes() {
 	s.Mux.HandleFunc("GET /v1/test/illegal", s.handleTestIllegal)
 	s.Mux.Handle("GET /debug/vars", expvar.Handler())
 
-	s.Mux.Handle("/", http.FileServer(http.Dir("web")))
+	s.Mux.Handle("GET /static/", http.StripPrefix("/static", http.FileServer(http.Dir("web"))))
+	s.Mux.Handle("GET /", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" || r.URL.Path == "" {
+			http.ServeFile(w, r, "web/index.html")
+			return
+		}
+		http.FileServer(http.Dir("web")).ServeHTTP(w, r)
+	}))
 }
 
 func (s *Server) ListenAndServe() error {
@@ -101,6 +110,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 		"butler":    map[string]string{"status": butlerStatus},
 		"architect": map[string]any{"status": archStatus, "registered_skills": skillNames},
 		"overall":   overall,
+		"version":   s.Version,
 	})
 }
 

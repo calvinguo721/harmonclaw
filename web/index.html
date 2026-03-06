@@ -6,272 +6,124 @@
 <title>HarmonClaw</title>
 <style>
 :root{
-  --bg:#0d0b07;--surf:#15120c;--surf2:#1c1912;--bdr:#28241a;
-  --accent:#d4a017;--txt:#e0ddd0;--txt2:#7a7560;--txt3:#4a4538;
-  --glow:rgba(212,160,23,.12);--danger:#ff2233;
-  --ease:.45s cubic-bezier(.4,0,.2,1);
+  --bg:#0a0a0c;--surf:#121218;--surf2:#1a1a22;--bdr:#2a2a35;
+  --gov:#c43d4a;--gov-glow:rgba(196,61,74,.2);
+  --butler:#3d7fc4;--butler-glow:rgba(61,127,196,.2);
+  --arch:#3dc46a;--arch-glow:rgba(61,196,106,.2);
+  --txt:#e0e0e8;--txt2:#8888a0;--txt3:#505068;
+  --ease:.35s cubic-bezier(.4,0,.2,1);
 }
-[data-mode="shadow"]{
-  --bg:#08040a;--surf:#110810;--surf2:#1a0e18;--bdr:#2a1225;
-  --accent:#ff2244;--txt:#c8a0aa;--txt2:#6a4050;--txt3:#3a2028;
-  --glow:rgba(255,34,68,.1);
-}
-[data-mode="opensea"]{
-  --bg:#040d08;--surf:#0a1810;--surf2:#102218;--bdr:#183020;
-  --accent:#00e878;--txt:#d0e8d8;--txt2:#5a8a68;--txt3:#2a4a30;
-  --glow:rgba(0,232,120,.1);
-}
-
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
-body{
-  font-family:"Segoe UI","Noto Sans SC",-apple-system,sans-serif;
-  background:var(--bg);color:var(--txt);height:100vh;overflow:hidden;
-  transition:background var(--ease),color var(--ease);
-}
+body{font-family:"Segoe UI","Noto Sans SC",-apple-system,sans-serif;background:var(--bg);color:var(--txt);height:100vh;overflow:hidden}
 button{cursor:pointer;border:none;background:none;color:inherit;font:inherit}
-button:active{transform:scale(.93)}
+button:active{transform:scale(.96)}
 input,textarea{border:none;outline:none;background:none;color:inherit;font:inherit;resize:none}
-::-webkit-scrollbar{width:3px}
+::-webkit-scrollbar{width:4px}
 ::-webkit-scrollbar-thumb{background:var(--bdr);border-radius:2px}
 
-/* ══════ Shell ══════ */
-.shell{display:flex;height:100vh}
-
-/* ══════ Left: Governor ══════ */
-.gov{
-  width:210px;min-width:210px;display:flex;flex-direction:column;
-  border-right:1px solid var(--bdr);background:var(--surf);
-  transition:background var(--ease),border-color var(--ease);
-}
-.gov-header{
-  padding:1rem 1rem .8rem;display:flex;align-items:center;gap:.6rem;
-  border-bottom:1px solid var(--bdr);transition:border-color var(--ease);
-}
-.heartbeat{
-  width:8px;height:8px;border-radius:50%;background:var(--accent);
-  box-shadow:0 0 6px var(--accent);
-  animation:pulse 2s ease-in-out infinite;
-  transition:background var(--ease),box-shadow var(--ease);
-}
-@keyframes pulse{0%,100%{opacity:.4;transform:scale(.9)}50%{opacity:1;transform:scale(1.15)}}
-.gov-title{font-size:.65rem;letter-spacing:.14em;color:var(--txt2);text-transform:uppercase}
-.gov-body{flex:1;overflow-y:auto;padding:.6rem}
-
-.stat-row{
-  display:flex;justify-content:space-between;align-items:center;
-  padding:.45rem .5rem;border-radius:6px;margin-bottom:.3rem;
-  background:var(--surf2);transition:background var(--ease);
-}
-.stat-k{font-size:.6rem;color:var(--txt2);letter-spacing:.06em;text-transform:uppercase}
-.stat-v{font-size:.78rem;font-weight:700;color:var(--accent);transition:color var(--ease)}
-
-.ledger-title{
-  font-size:.58rem;color:var(--txt3);letter-spacing:.1em;text-transform:uppercase;
-  padding:.6rem 0 .35rem;
-}
-.ledger-list{display:flex;flex-direction:column;gap:.25rem}
-.le{
-  font-size:.65rem;font-family:"Cascadia Code","Fira Code",monospace;
-  padding:.35rem .45rem;border-radius:5px;
-  background:var(--surf2);border-left:2px solid var(--bdr);
-  opacity:0;animation:fadeUp .25s forwards;
-  display:flex;justify-content:space-between;align-items:center;
-  transition:background var(--ease),border-color var(--ease);
-}
-.le[data-s="ok"],.le[data-s="success"]{border-left-color:#00e878}
-.le[data-s="fail"]{border-left-color:var(--danger)}
-.le-left{display:flex;gap:.4rem;align-items:center;overflow:hidden}
-.le-t{color:var(--txt3);flex-shrink:0}
-.le-a{color:var(--accent);transition:color var(--ease);white-space:nowrap;
-  overflow:hidden;text-overflow:ellipsis}
-.le-tk{color:var(--txt3);flex-shrink:0;font-size:.6rem}
-@keyframes fadeUp{to{opacity:1}}
-
-/* ══════ Center: Butler ══════ */
-.butler{flex:1;display:flex;flex-direction:column;min-width:0}
-.butler-header{
+/* ══════ Top Status Bar ══════ */
+.topbar{
   display:flex;align-items:center;justify-content:space-between;
-  padding:0 1.2rem;height:50px;
-  border-bottom:1px solid var(--bdr);background:var(--surf);
-  transition:background var(--ease),border-color var(--ease);
+  height:40px;padding:0 1rem;background:var(--surf);border-bottom:1px solid var(--bdr);
 }
-.butler-brand{display:flex;align-items:center;gap:.7rem}
-.butler-brand h1{font-size:.9rem;letter-spacing:.12em;color:var(--accent);
-  transition:color var(--ease)}
-.butler-brand span{font-size:.6rem;color:var(--txt3);letter-spacing:.06em}
-.btn-lab{
-  padding:.35rem .7rem;border-radius:6px;font-size:.65rem;font-weight:600;
-  letter-spacing:.06em;color:var(--txt2);background:var(--surf2);
-  transition:background .2s,color .2s,transform .1s;
-}
-.btn-lab:hover{background:var(--accent);color:var(--bg)}
+.topbar-left{display:flex;align-items:center;gap:1rem}
+.health-dot{width:8px;height:8px;border-radius:50%;background:var(--txt3)}
+.health-dot.ok{background:var(--arch);box-shadow:0 0 8px var(--arch)}
+.health-dot.err{background:var(--gov);box-shadow:0 0 8px var(--gov)}
+.topbar-ver{font-size:.7rem;color:var(--txt2);letter-spacing:.05em}
+.sov-sw{display:flex;border-radius:6px;overflow:hidden;border:1px solid var(--bdr)}
+.sv{padding:.25rem .8rem;font-size:.62rem;font-weight:700;letter-spacing:.06em;color:var(--txt2);transition:all .2s}
+.sv.active{color:#fff}
+.sv-s.active{background:#c43d4a}
+.sv-a.active{background:#3d7fc4}
+.sv-o.active{background:#3dc46a}
 
-.chat-body{flex:1;overflow-y:auto;padding:1.2rem 1.5rem}
-.chat-flow{display:flex;flex-direction:column;gap:.6rem;max-width:720px;margin:0 auto}
-.msg{
-  max-width:80%;padding:.7rem 1rem;font-size:.88rem;line-height:1.6;
-  word-break:break-word;border-radius:14px;
-  animation:msgPop .25s cubic-bezier(.34,1.56,.64,1);
+/* ══════ Shell: Three Columns ══════ */
+.shell{display:flex;flex:1;height:calc(100vh - 40px);min-height:0}
+@media(max-width:900px){.shell{flex-direction:column}}
+
+/* ══════ Left: Governor (Red) ══════ */
+.gov{
+  width:200px;min-width:200px;display:flex;flex-direction:column;
+  border-right:1px solid var(--bdr);background:linear-gradient(180deg,var(--surf) 0%,#1a1214 100%);
 }
-.msg-user{
-  align-self:flex-end;background:var(--accent);color:var(--bg);
-  border-bottom-right-radius:4px;
-  box-shadow:0 2px 14px var(--glow);
-}
-.msg-ai{
-  align-self:flex-start;background:var(--surf2);border:1px solid var(--bdr);
-  border-bottom-left-radius:4px;
-  box-shadow:0 2px 18px rgba(0,0,0,.2);
-  transition:background var(--ease),border-color var(--ease);
-}
-.msg-cursor{display:inline-block;width:2px;height:1em;background:var(--accent);
-  animation:blink .55s infinite;vertical-align:text-bottom;margin-left:1px;
-  transition:background var(--ease)}
-@keyframes msgPop{from{opacity:0;transform:translateY(8px) scale(.97)}to{opacity:1;transform:none}}
+@media(max-width:900px){.gov{width:100%;min-width:0;border-right:none;border-bottom:1px solid var(--bdr)}}
+.gov-header{padding:.8rem 1rem;display:flex;align-items:center;gap:.5rem;border-bottom:1px solid var(--bdr)}
+.gov-dot{width:8px;height:8px;border-radius:50%;background:var(--gov);box-shadow:0 0 6px var(--gov);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:.6}50%{opacity:1}}
+.gov-title{font-size:.6rem;letter-spacing:.12em;color:var(--gov);text-transform:uppercase}
+.gov-body{flex:1;overflow-y:auto;padding:.5rem}
+.stat-row{display:flex;justify-content:space-between;padding:.4rem .5rem;margin-bottom:.2rem;background:var(--surf2);border-radius:6px}
+.stat-k{font-size:.58rem;color:var(--txt2);text-transform:uppercase}
+.stat-v{font-size:.75rem;font-weight:700;color:var(--gov)}
+.ledger-title{font-size:.55rem;color:var(--txt3);padding:.5rem 0 .25rem;text-transform:uppercase}
+.ledger-list{display:flex;flex-direction:column;gap:.2rem}
+.le{font-size:.62rem;font-family:monospace;padding:.3rem .4rem;border-radius:4px;background:var(--surf2);border-left:3px solid var(--bdr)}
+.le[data-s="ok"],.le[data-s="success"]{border-left-color:var(--arch)}
+.le[data-s="fail"]{border-left-color:var(--gov)}
+.le span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ══════ Center: Butler (Blue) ══════ */
+.butler{flex:1;display:flex;flex-direction:column;min-width:0;background:linear-gradient(180deg,var(--surf) 0%,#12181a 100%)}
+.butler-header{padding:0 1rem;height:48px;display:flex;align-items:center;border-bottom:1px solid var(--bdr)}
+.butler-brand h1{font-size:.85rem;letter-spacing:.1em;color:var(--butler)}
+.chat-body{flex:1;overflow-y:auto;padding:1rem}
+.chat-flow{display:flex;flex-direction:column;gap:.5rem;max-width:680px;margin:0 auto}
+.msg{max-width:82%;padding:.6rem 1rem;font-size:.85rem;line-height:1.55;word-break:break-word;border-radius:12px;animation:msgIn .2s ease}
+.msg-user{align-self:flex-end;background:var(--butler);color:#fff;border-bottom-right-radius:4px}
+.msg-ai{align-self:flex-start;background:var(--surf2);border:1px solid var(--bdr);border-bottom-left-radius:4px}
+.msg-cursor{display:inline-block;width:2px;height:1em;background:var(--butler);animation:blink .6s infinite;vertical-align:text-bottom;margin-left:2px}
+@keyframes msgIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 @keyframes blink{50%{opacity:0}}
+.chat-bar{display:flex;gap:.5rem;padding:.6rem 1rem;border-top:1px solid var(--bdr)}
+.chat-in{flex:1;padding:.5rem .8rem;border-radius:8px;font-size:.85rem;background:var(--bg);border:1px solid var(--bdr)}
+.chat-in:focus{border-color:var(--butler)}
+.btn-send{padding:.45rem 1.2rem;border-radius:8px;font-size:.75rem;font-weight:700;background:var(--butler);color:#fff}
+.btn-send:disabled{opacity:.4;cursor:default}
 
-.chat-bar{
-  display:flex;gap:.5rem;padding:.7rem 1.2rem;
-  border-top:1px solid var(--bdr);background:var(--surf);
-  transition:background var(--ease),border-color var(--ease);
-}
-.chat-in{
-  flex:1;padding:.6rem .85rem;border-radius:10px;font-size:.88rem;
-  background:var(--bg);border:1px solid var(--bdr);
-  transition:background var(--ease),border-color var(--ease);
-}
-.chat-in:focus{border-color:var(--accent)}
-.btn-send{
-  padding:.5rem 1.3rem;border-radius:10px;font-size:.78rem;font-weight:700;
-  letter-spacing:.08em;background:var(--accent);color:var(--bg);
-  transition:background var(--ease),transform .1s;
-}
-.btn-send:disabled{opacity:.35;cursor:default}
-
-/* ══════ Right: Architect ══════ */
-.arch{
-  width:0;overflow:hidden;display:flex;flex-direction:column;
-  border-left:1px solid var(--bdr);background:var(--surf);
-  transition:width .35s cubic-bezier(.4,0,.2,1),background var(--ease),border-color var(--ease);
-}
-.arch.open{width:300px}
-.arch-header{
-  padding:.7rem .8rem;font-size:.6rem;letter-spacing:.12em;color:var(--txt2);
-  text-transform:uppercase;border-bottom:1px solid var(--bdr);
-  display:flex;justify-content:space-between;align-items:center;
-  transition:border-color var(--ease);
-}
-.arch-close{font-size:.9rem;color:var(--txt3);padding:.1rem .3rem;
-  transition:color .2s}
-.arch-close:hover{color:var(--accent)}
-.arch-body{flex:1;overflow-y:auto;padding:.6rem}
-.term{
-  font-family:"Cascadia Code","Fira Code",monospace;font-size:.68rem;
-  line-height:1.7;color:var(--txt2);white-space:pre-wrap;word-break:break-all;
-}
-.t-ok{color:#00e878}.t-err{color:var(--danger)}.t-p{color:var(--accent);transition:color var(--ease)}
-.arch-bar{
-  display:flex;gap:.35rem;padding:.5rem .6rem;
-  border-top:1px solid var(--bdr);background:var(--surf2);
-  transition:background var(--ease),border-color var(--ease);
-}
-.arch-in{
-  flex:1;padding:.35rem .55rem;border-radius:5px;font-size:.7rem;
-  font-family:"Cascadia Code","Fira Code",monospace;
-  background:var(--bg);border:1px solid var(--bdr);
-  transition:background var(--ease),border-color var(--ease);
-}
-.arch-in:focus{border-color:var(--accent)}
-.btn-ex{
-  padding:.35rem .65rem;border-radius:5px;font-size:.65rem;font-weight:700;
-  background:var(--bdr);color:var(--txt2);transition:background .15s,color .15s,transform .1s;
-}
-.btn-ex:hover{background:var(--accent);color:var(--bg)}
-.quick-row{
-  display:flex;gap:.3rem;padding:.35rem .6rem;
-  border-top:1px solid var(--bdr);transition:border-color var(--ease);
-}
-.btn-q{
-  flex:1;padding:.3rem;border-radius:4px;font-size:.58rem;font-weight:600;
-  letter-spacing:.04em;text-align:center;
-  background:var(--surf2);color:var(--txt2);
-  transition:background .15s,color .15s,transform .1s;
-}
-.btn-q:hover{background:var(--accent);color:var(--bg)}
-.btn-q.danger{color:var(--danger)}
-.btn-q.danger:hover{background:var(--danger);color:#fff}
-
-/* ══════ Bottom Sovereignty Bar ══════ */
-.sovbar{
-  display:flex;align-items:center;justify-content:center;gap:1rem;
-  height:44px;border-top:1px solid var(--bdr);background:var(--surf);
-  transition:background var(--ease),border-color var(--ease);
-  position:relative;
-}
-.sov-sw{display:flex;border-radius:7px;overflow:hidden;border:1px solid var(--bdr);
-  transition:border-color var(--ease)}
-.sv{padding:.3rem 1rem;font-size:.65rem;font-weight:700;letter-spacing:.08em;
-  transition:all .2s}
-.sv.active{color:var(--bg)}
-.sv-s{color:#ff4455}.sv-s.active{background:#ff2233;color:#fff}
-.sv-a{color:#d4a017}.sv-a.active{background:#d4a017;color:#0f0e0a}
-.sv-o{color:#00e878}.sv-o.active{background:#00e878;color:#040d08}
-.btn-ill{
-  position:absolute;right:.8rem;padding:.25rem .5rem;border-radius:5px;
-  font-size:.55rem;letter-spacing:.05em;color:var(--txt3);
-  border:1px solid var(--bdr);opacity:.45;
-  transition:opacity .2s,border-color .2s,color .2s,transform .1s;
-}
-.btn-ill:hover{opacity:1;border-color:var(--danger);color:var(--danger)}
-
-/* ══════ Alert System ══════ */
-.alert-bg{position:fixed;inset:0;pointer-events:none;z-index:9999;
-  background:transparent;transition:background .12s}
-.alert-bg.flash{background:rgba(255,0,0,.22)}
-.alert-msg{
-  position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(.85);
-  background:#12050a;border:2px solid var(--danger);border-radius:14px;
-  padding:1.8rem 2.8rem;text-align:center;z-index:10000;
-  opacity:0;pointer-events:none;transition:all .25s cubic-bezier(.4,0,.2,1);
-}
-.alert-msg.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
-.alert-msg h2{color:var(--danger);font-size:1rem;letter-spacing:.1em}
-.alert-msg p{color:#8a6070;font-size:.75rem;margin-top:.4rem}
-
-/* ══════ OpenSea Breathe ══════ */
-[data-mode="opensea"] .gov,
-[data-mode="opensea"] .sovbar{animation:breathe 3s ease-in-out infinite}
-@keyframes breathe{0%,100%{box-shadow:inset 0 0 8px var(--glow)}50%{box-shadow:inset 0 0 22px var(--glow)}}
+/* ══════ Right: Architect (Green) ══════ */
+.arch{width:260px;min-width:260px;display:flex;flex-direction:column;border-left:1px solid var(--bdr);background:linear-gradient(180deg,var(--surf) 0%,#121a14 100%)}
+@media(max-width:900px){.arch{width:100%;min-width:0;border-left:none;border-top:1px solid var(--bdr)}}
+.arch-header{padding:.6rem .8rem;font-size:.58rem;letter-spacing:.1em;color:var(--arch);text-transform:uppercase;border-bottom:1px solid var(--bdr)}
+.arch-body{flex:1;overflow-y:auto;padding:.5rem}
+.skill-list{display:flex;flex-direction:column;gap:.25rem}
+.btn-skill{padding:.4rem .6rem;border-radius:6px;font-size:.7rem;text-align:left;background:var(--surf2);color:var(--txt2);border:1px solid transparent;transition:all .15s}
+.btn-skill:hover{background:var(--arch-glow);color:var(--arch);border-color:var(--arch)}
+.arch-log{font-family:monospace;font-size:.65rem;line-height:1.6;color:var(--txt2);white-space:pre-wrap;word-break:break-all;margin-top:.5rem;padding:.4rem;background:var(--bg);border-radius:6px;max-height:120px;overflow-y:auto}
+.t-ok{color:var(--arch)}.t-err{color:var(--gov)}.t-p{color:var(--butler)}
+.arch-bar{display:flex;gap:.3rem;padding:.4rem .5rem;border-top:1px solid var(--bdr)}
+.arch-in{flex:1;padding:.3rem .5rem;border-radius:5px;font-size:.68rem;font-family:monospace;background:var(--bg);border:1px solid var(--bdr)}
+.arch-in:focus{border-color:var(--arch)}
+.btn-ex{padding:.3rem .6rem;border-radius:5px;font-size:.65rem;font-weight:700;background:var(--arch);color:var(--bg)}
 </style>
 </head>
 <body>
 
+<div class="topbar">
+  <div class="topbar-left">
+    <div class="health-dot" id="healthDot"></div>
+    <span class="topbar-ver" id="version">—</span>
+  </div>
+  <div class="sov-sw">
+    <button class="sv sv-s" data-m="shadow">SHADOW</button>
+    <button class="sv sv-a active" data-m="airlock">AIRLOCK</button>
+    <button class="sv sv-o" data-m="opensea">OPENSEA</button>
+  </div>
+</div>
+
 <div class="shell">
-  <!-- ══ LEFT: Governor/Order ══ -->
   <aside class="gov">
-    <div class="gov-header">
-      <div class="heartbeat" id="hb"></div>
-      <div class="gov-title">Governor</div>
-    </div>
+    <div class="gov-header"><div class="gov-dot"></div><span class="gov-title">Governor</span></div>
     <div class="gov-body">
       <div class="stat-row"><span class="stat-k">Mode</span><span class="stat-v" id="sMode">AIRLOCK</span></div>
-      <div class="stat-row"><span class="stat-k">Health</span><span class="stat-v" id="sHealth">&mdash;</span></div>
-      <div class="stat-row"><span class="stat-k">Tokens</span><span class="stat-v" id="sTok">0</span></div>
-      <div class="stat-row"><span class="stat-k">Records</span><span class="stat-v" id="sRec">0</span></div>
-      <div class="ledger-title">Metabolism Ledger</div>
+      <div class="stat-row"><span class="stat-k">Health</span><span class="stat-v" id="sHealth">—</span></div>
+      <div class="ledger-title">Ledger</div>
       <div class="ledger-list" id="ledger"></div>
     </div>
   </aside>
 
-  <!-- ══ CENTER: Butler/Life ══ -->
   <main class="butler">
-    <div class="butler-header">
-      <div class="butler-brand">
-        <h1>HARMONCLAW</h1>
-        <span>Butler / Life</span>
-      </div>
-      <button class="btn-lab" id="btnLab">LAB &#9881;</button>
-    </div>
+    <div class="butler-header"><h1 class="butler-brand">Butler / Life</h1></div>
     <div class="chat-body" id="chatBody">
       <div class="chat-flow" id="chatFlow"></div>
     </div>
@@ -281,59 +133,29 @@ input,textarea{border:none;outline:none;background:none;color:inherit;font:inher
     </div>
   </main>
 
-  <!-- ══ RIGHT: Architect/Work ══ -->
-  <aside class="arch" id="arch">
-    <div class="arch-header">
-      <span>Architect / Sandbox</span>
-      <button class="arch-close" id="archClose">&times;</button>
-    </div>
+  <aside class="arch">
+    <div class="arch-header">Architect / Skills</div>
     <div class="arch-body">
-      <div class="term" id="term"><span class="t-p">hclaw&gt;</span> sandbox ready</div>
-    </div>
-    <div class="quick-row">
-      <button class="btn-q" data-sk="skill_healthcheck">&#10003; healthcheck</button>
-      <button class="btn-q danger" data-sk="skill_read_contacts">&#9888; contacts</button>
+      <div class="skill-list" id="skillList"></div>
+      <div class="arch-log" id="archLog"><span class="t-p">hclaw&gt;</span> ready</div>
     </div>
     <div class="arch-bar">
-      <input class="arch-in" id="archIn" placeholder="skill_id..." autocomplete="off">
-      <button class="btn-ex" id="btnEx">RUN</button>
+      <input class="arch-in" id="archIn" placeholder="skill_id or text..." autocomplete="off">
+      <button class="btn-ex" id="btnEx">EXEC</button>
     </div>
   </aside>
-</div>
-
-<!-- Sovereignty Bar -->
-<div class="sovbar">
-  <div class="sov-sw">
-    <button class="sv sv-s" data-m="shadow">SHADOW</button>
-    <button class="sv sv-a active" data-m="airlock">AIRLOCK</button>
-    <button class="sv sv-o" data-m="opensea">OPENSEA</button>
-  </div>
-  <button class="btn-ill" id="btnIll">&#9888; ILLEGAL</button>
-</div>
-
-<!-- Alert Layer -->
-<div class="alert-bg" id="alertBg"></div>
-<div class="alert-msg" id="alertMsg">
-  <h2>&#9888; GOVERNOR INTERCEPT</h2>
-  <p>Unauthorized access blocked.</p>
 </div>
 
 <script>
 const $=s=>document.querySelector(s);
 const $$=s=>document.querySelectorAll(s);
+let history=[],busy=false,prevLedgerHash='';
 
-/* ── State ── */
-let history=[];
-let busy=false;
-let prevHash='';
+const chatFlow=$('#chatFlow'),chatBody=$('#chatBody'),chatIn=$('#chatIn'),btnSend=$('#btnSend'),
+      ledger=$('#ledger'),skillList=$('#skillList'),archLog=$('#archLog'),archIn=$('#archIn'),
+      sMode=$('#sMode'),sHealth=$('#sHealth'),healthDot=$('#healthDot'),version=$('#version');
 
-/* ── DOM ── */
-const chatFlow=$('#chatFlow'),chatBody=$('#chatBody'),chatIn=$('#chatIn'),
-      btnSend=$('#btnSend'),ledger=$('#ledger'),arch=$('#arch'),
-      term=$('#term'),archIn=$('#archIn'),alertBg=$('#alertBg'),alertMsg=$('#alertMsg'),
-      sMode=$('#sMode'),sHealth=$('#sHealth'),sTok=$('#sTok'),sRec=$('#sRec'),hb=$('#hb');
-
-/* ══════ Sovereignty Switch ══════ */
+/* Sovereignty (UI only) */
 $$('.sv').forEach(b=>b.addEventListener('click',()=>{
   $$('.sv').forEach(x=>x.classList.remove('active'));
   b.classList.add('active');
@@ -342,11 +164,32 @@ $$('.sv').forEach(b=>b.addEventListener('click',()=>{
   sMode.textContent=m.toUpperCase();
 }));
 
-/* ══════ Architect Panel ══════ */
-$('#btnLab').addEventListener('click',()=>arch.classList.add('open'));
-$('#archClose').addEventListener('click',()=>arch.classList.remove('open'));
+/* Health + Version */
+async function refreshHealth(){
+  try{
+    const r=await fetch('/v1/health');
+    const d=await r.json();
+    const ok=d.overall==='healthy';
+    healthDot.className='health-dot '+(ok?'ok':'err');
+    sHealth.textContent=ok?'OK':'DEGRADED';
+    version.textContent=d.version||'—';
+    if(Array.isArray(d.architect?.registered_skills)){
+      renderSkills(d.architect.registered_skills);
+    }
+  }catch(_){healthDot.className='health-dot err';sHealth.textContent='OFF'}
+}
+function renderSkills(skills){
+  skillList.innerHTML='';
+  (skills||[]).forEach(sk=>{
+    const b=document.createElement('button');
+    b.className='btn-skill';b.textContent=sk;b.dataset.sk=sk;
+    b.addEventListener('click',()=>{archIn.value=sk;execSkill()});
+    skillList.appendChild(b);
+  });
+}
+setInterval(refreshHealth,4000);refreshHealth();
 
-/* ══════ Butler Chat ══════ */
+/* Chat */
 chatIn.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}});
 btnSend.addEventListener('click',send);
 
@@ -354,10 +197,8 @@ async function send(){
   const t=chatIn.value.trim();
   if(!t||busy)return;
   busy=true;btnSend.disabled=true;chatIn.value='';
-
   addBubble('user',t);
   history.push({role:'user',content:t});
-
   const el=addBubble('ai','');
   const cur=document.createElement('span');
   cur.className='msg-cursor';el.appendChild(cur);
@@ -368,11 +209,10 @@ async function send(){
       body:JSON.stringify({messages:history})
     });
     const d=await r.json();
-    if(!r.ok){cur.remove();el.textContent='[Error] '+(d.error||r.statusText);
-      checkAlert(r);return}
+    if(!r.ok){cur.remove();el.textContent='[Error] '+(d.error||r.statusText);return}
     const c=d.choices?.[0]?.message?.content||'(empty)';
     history.push({role:'assistant',content:c});
-    await type(el,c,cur);
+    await typeOut(el,c,cur);
   }catch(e){cur.remove();el.textContent='[Network] '+e.message}
   finally{busy=false;btnSend.disabled=false}
 }
@@ -386,101 +226,65 @@ function addBubble(role,text){
   return el;
 }
 
-async function type(el,text,cur){
+async function typeOut(el,text,cur){
   el.textContent='';
-  const sp=Math.max(6,Math.min(28,1200/text.length));
+  const sp=Math.max(4,Math.min(25,800/text.length));
   for(let i=0;i<text.length;i++){
     el.textContent+=text[i];
     el.appendChild(cur);
     chatBody.scrollTop=chatBody.scrollHeight;
-    if(i%3===0)await wait(sp);
+    if(i%2===0)await new Promise(r=>setTimeout(r,sp));
   }
   cur.remove();
 }
 
-/* ══════ Ledger Polling ══════ */
-async function poll(){
+/* Ledger */
+async function pollLedger(){
   try{
     const r=await fetch('/v1/ledger/latest');
     if(!r.ok)return;
     const entries=await r.json();
     if(!Array.isArray(entries))return;
-
-    sTok.textContent=entries.length;
-    sRec.textContent=entries.length;
-
     const hash=JSON.stringify(entries);
-    if(hash!==prevHash){renderLedger(entries);prevHash=hash}
+    if(hash!==prevLedgerHash){renderLedger(entries);prevLedgerHash=hash}
   }catch(_){}
 }
-
 function renderLedger(entries){
   ledger.innerHTML='';
-  entries.forEach(e=>{
+  entries.slice(-12).forEach(e=>{
     const d=document.createElement('div');
     d.className='le';d.setAttribute('data-s',e.result||'ok');
-    const ts=e.timestamp?e.timestamp.substring(11,19):'--:--:--';
-    d.innerHTML='<span class="le-left"><span class="le-t">'+ts+'</span>'
-      +'<span class="le-a">'+esc(e.action_type||'-')+'</span></span>'
-      +'<span class="le-tk">'+esc(e.result||'-')+'</span>';
+    const ts=e.timestamp?e.timestamp.substring(11,19):'--:--';
+    d.innerHTML='<span>'+ts+' '+esc(e.action_type||'-')+'</span><span>'+esc(e.result||'-')+'</span>';
     ledger.appendChild(d);
   });
 }
-setInterval(poll,2000);poll();
+setInterval(pollLedger,2500);pollLedger();
 
-/* ══════ Health Check ══════ */
-async function checkHealth(){
-  try{
-    const r=await fetch('/v1/health');
-    const d=await r.json();
-    sHealth.textContent=d.status==='ok'?'OK':'ERR';
-    hb.style.background=d.status==='ok'?'var(--accent)':'var(--danger)';
-    hb.style.boxShadow=d.status==='ok'?'0 0 6px var(--accent)':'0 0 6px var(--danger)';
-  }catch(_){sHealth.textContent='OFF';hb.style.background='var(--danger)'}
-}
-setInterval(checkHealth,5000);checkHealth();
+/* Skill Execute */
+$('#btnEx').addEventListener('click',execSkill);
+archIn.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();execSkill()}});
 
-/* ══════ Sandbox ══════ */
-$('#btnEx').addEventListener('click',exec);
-archIn.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();exec()}});
-$$('.btn-q').forEach(b=>b.addEventListener('click',()=>{archIn.value=b.dataset.sk;exec()}));
-
-async function exec(){
-  const sk=archIn.value.trim();if(!sk)return;archIn.value='';
+async function execSkill(){
+  const sk=archIn.value.trim();
+  if(!sk)return;
+  archIn.value='';
   tlog('<span class="t-p">hclaw&gt;</span> exec '+esc(sk));
   try{
     const r=await fetch('/v1/skills/execute',{
       method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({skill_id:sk})
+      body:JSON.stringify({skill_id:sk,skill_name:sk,text:sk,input:sk})
     });
     const d=await r.json();
-    checkAlert(r);
     if(r.status===403){
-      tlog('<span class="t-err">[BLOCKED] '+esc(d.reason||d.error)+' risk='+esc(d.risk_level||'?')+'</span>');
+      tlog('<span class="t-err">[BLOCKED] '+esc(d.reason||d.error||'')+'</span>');
     }else if(r.ok){
-      tlog('<span class="t-ok">[OK] '+esc(d.result||JSON.stringify(d))+'</span>');
-    }else{tlog('[ERR] '+esc(d.error||r.statusText))}
-  }catch(e){tlog('[NET] '+esc(e.message))}
+      tlog('<span class="t-ok">[OK] '+esc(d.status||'')+' '+esc(JSON.stringify(d).slice(0,80))+'</span>');
+    }else{tlog('<span class="t-err">[ERR] '+esc(d.error||r.statusText)+'</span>')}
+  }catch(e){tlog('<span class="t-err">[NET] '+esc(e.message)+'</span>')}
 }
 
-function tlog(h){term.innerHTML+='\n'+h;term.parentElement.scrollTop=term.parentElement.scrollHeight}
-
-/* ══════ Illegal Test ══════ */
-$('#btnIll').addEventListener('click',async()=>{
-  try{const r=await fetch('/v1/test/illegal');checkAlert(r)}catch(_){}
-});
-
-/* ══════ Alert System ══════ */
-async function checkAlert(r){
-  if(r.status===403&&r.headers.get('X-HarmonClaw-Alert')){
-    for(let i=0;i<2;i++){alertBg.classList.add('flash');await wait(160);
-      alertBg.classList.remove('flash');await wait(100)}
-    alertMsg.classList.add('show');await wait(2000);alertMsg.classList.remove('show');
-  }
-}
-
-/* ══════ Utils ══════ */
-function wait(ms){return new Promise(r=>setTimeout(r,ms))}
+function tlog(h){archLog.innerHTML+='\n'+h;archLog.scrollTop=archLog.scrollHeight}
 function esc(s){const d=document.createElement('div');d.textContent=String(s);return d.innerHTML}
 </script>
 </body>
