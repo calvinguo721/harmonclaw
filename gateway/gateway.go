@@ -86,10 +86,15 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 		overall = "degraded"
 	}
 
+	skillNames := make([]string, 0, len(skills.Registry))
+	for id := range skills.Registry {
+		skillNames = append(skillNames, id)
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
-		"governor":  map[string]string{"mode": SovereigntyMode, "status": govStatus},
+		"governor":  map[string]any{"mode": SovereigntyMode, "status": govStatus},
 		"butler":    map[string]string{"status": butlerStatus},
-		"architect": map[string]string{"status": archStatus},
+		"architect": map[string]any{"status": archStatus, "registered_skills": skillNames},
 		"overall":   overall,
 	})
 }
@@ -161,19 +166,28 @@ func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	skillID := req.SkillID
+	if skillID == "" {
+		skillID = req.SkillName
+	}
+	if skillID == "" {
+		writeError(w, http.StatusBadRequest, "skill_id or skill_name required")
+		return
+	}
+
 	userID := "default"
-	if !s.Governor.Quota().Allow(userID, req.SkillID) {
+	if !s.Governor.Quota().Allow(userID, skillID) {
 		writeError(w, http.StatusTooManyRequests, "quota exceeded")
 		return
 	}
 	defer s.Governor.Quota().Release(userID)
 
-	check := s.Architect.HandleSkill(req.SkillID)
+	check := s.Architect.HandleSkill(skillID)
 	if !check.Allowed {
 		s.Ledger.Record(viking.LedgerEntry{
 			OperatorID: "default",
 			ActionType: "skill_exec",
-			Resource:   req.SkillID,
+			Resource:   skillID,
 			Result:     "fail",
 			ClientIP:   r.RemoteAddr,
 			Timestamp:  time.Now().Format(time.RFC3339),
@@ -187,12 +201,12 @@ func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sk, ok := skills.Registry[req.SkillID]
+	sk, ok := skills.Registry[skillID]
 	if !ok {
 		s.Ledger.Record(viking.LedgerEntry{
 			OperatorID: "default",
 			ActionType: "skill_exec",
-			Resource:   req.SkillID,
+			Resource:   skillID,
 			Result:     "success",
 			ClientIP:   r.RemoteAddr,
 			Timestamp:  time.Now().Format(time.RFC3339),
@@ -214,11 +228,19 @@ func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	args := req.Args
+	if args == nil {
+		args = make(map[string]string)
+	}
+	args["sovereignty"] = SovereigntyMode
 	input := skills.SkillInput{
-		TraceID:   fmt.Sprintf("%d", time.Now().UnixMilli()),
+		TraceID:   GetActionID(r.Context()),
 		Text:      text,
-		Args:      req.Args,
+		Args:      args,
 		LocalOnly: true,
+	}
+	if input.TraceID == "" {
+		input.TraceID = fmt.Sprintf("%d", time.Now().UnixMilli())
 	}
 	output := sk.Execute(input)
 
@@ -229,7 +251,7 @@ func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
 	s.Ledger.Record(viking.LedgerEntry{
 		OperatorID: "default",
 		ActionType: "skill_exec",
-		Resource:   req.SkillID,
+		Resource:   skillID,
 		Result:     result,
 		ClientIP:   r.RemoteAddr,
 		Timestamp:  time.Now().Format(time.RFC3339),
@@ -263,10 +285,11 @@ func (s *Server) handleTestIllegal(w http.ResponseWriter, _ *http.Request) {
 // --- request/response types ---
 
 type skillRequest struct {
-	SkillID string            `json:"skill_id"`
-	Input   string            `json:"input"`
-	Text    string            `json:"text"`
-	Args    map[string]string `json:"args"`
+	SkillID   string            `json:"skill_id"`
+	SkillName string            `json:"skill_name"`
+	Input     string            `json:"input"`
+	Text      string            `json:"text"`
+	Args      map[string]string `json:"args"`
 }
 
 type blockResponse struct {

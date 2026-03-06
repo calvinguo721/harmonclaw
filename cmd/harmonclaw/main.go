@@ -18,6 +18,8 @@ import (
 	"harmonclaw/viking"
 
 	_ "harmonclaw/skills/doc_perceiver"
+	_ "harmonclaw/skills/openclaw_adapter"
+	_ "harmonclaw/skills/web_search"
 )
 
 func init() {
