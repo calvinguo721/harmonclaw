@@ -235,7 +235,7 @@ func (s *Server) handleToken(w http.ResponseWriter, r *http.Request) {
 			userID = req.UserID
 		}
 	}
-	token, err := governor.GenerateToken(userID)
+	token, err := governor.GenerateToken(userID, "user")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "token generation failed")
 		return

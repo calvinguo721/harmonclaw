@@ -23,7 +23,10 @@ var (
 
 func initTokenSecret() {
 	tokenOnce.Do(func() {
-		s := os.Getenv("HC_TOKEN_SECRET")
+		s := os.Getenv("HC_JWT_SECRET")
+		if s == "" {
+			s = os.Getenv("HC_TOKEN_SECRET")
+		}
 		if s != "" {
 			tokenSecret = []byte(s)
 			return
@@ -39,19 +42,26 @@ func initTokenSecret() {
 }
 
 type Claims struct {
-	UserID   string `json:"user_id"`
-	IssuedAt int64  `json:"issued_at"`
-	ExpiresAt int64 `json:"expires_at"`
-	Scope   string `json:"scope"`
+	UserID    string `json:"user_id"`
+	Role      string `json:"role"`
+	IssuedAt  int64  `json:"issued_at"`
+	ExpiresAt int64  `json:"expires_at"`
+	Scope     string `json:"scope"`
 }
 
-func GenerateToken(userID string) (string, error) {
+const (
+	tokenExpiry   = 24 * 3600  // 24h
+	refreshWindow = 72 * 3600  // 72h for refresh
+)
+
+func GenerateToken(userID, role string) (string, error) {
 	initTokenSecret()
 	now := time.Now().Unix()
 	claims := Claims{
 		UserID:    userID,
+		Role:      role,
 		IssuedAt:  now,
-		ExpiresAt: now + 3600,
+		ExpiresAt: now + tokenExpiry,
 		Scope:     "default",
 	}
 	payload, err := json.Marshal(claims)
@@ -92,4 +102,16 @@ func ValidateToken(token string) (Claims, error) {
 		return Claims{}, fmt.Errorf("token expired")
 	}
 	return c, nil
+}
+
+func RefreshToken(token string) (string, error) {
+	c, err := ValidateToken(token)
+	if err != nil {
+		return "", err
+	}
+	now := time.Now().Unix()
+	if now > c.IssuedAt+refreshWindow {
+		return "", fmt.Errorf("refresh window exceeded")
+	}
+	return GenerateToken(c.UserID, c.Role)
 }

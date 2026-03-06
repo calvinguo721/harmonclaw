@@ -73,6 +73,7 @@ func (s *Server) routes() {
 	s.Mux.HandleFunc("GET /v1/ledger/latest", s.handleLedger)
 	s.Mux.HandleFunc("GET /v1/ledger/trace", s.handleLedgerTrace)
 	s.Mux.HandleFunc("POST /v1/token", s.handleToken)
+	s.Mux.HandleFunc("POST /v1/auth/login", s.handleToken)
 	s.Mux.HandleFunc("GET /v1/test/illegal", s.handleTestIllegal)
 	s.Mux.HandleFunc("GET /v1/test/panic", s.handleTestPanic)
 	s.Mux.HandleFunc("GET /v1/audit/query", s.handleAuditQuery)
@@ -136,6 +137,14 @@ func authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 		if r.URL.Path == "/v1/token" && r.Method == "POST" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if r.URL.Path == "/v1/health" || r.URL.Path == "/healthz" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if r.URL.Path == "/v1/auth/login" && r.Method == "POST" {
 			next.ServeHTTP(w, r)
 			return
 		}
