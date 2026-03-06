@@ -1,3 +1,4 @@
+// Package ironclaw provides security policy matrix and enforcement.
 package ironclaw
 
 import (

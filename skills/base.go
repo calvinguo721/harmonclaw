@@ -1,3 +1,4 @@
+// Package skills defines H-Skill Standard interface and Registry.
 package skills
 
 import "encoding/json"

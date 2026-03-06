@@ -1,3 +1,4 @@
+// Package governor (client) provides SecureClient with sovereignty whitelist.
 package governor
 
 import (

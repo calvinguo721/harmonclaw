@@ -1,3 +1,4 @@
+// Package viking provides Merkle root computation for audit.
 package viking
 
 import (

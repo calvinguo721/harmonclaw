@@ -1,3 +1,4 @@
+// Package governor (crypto) provides Hasher, Encryptor, Signer interfaces.
 package governor
 
 import (

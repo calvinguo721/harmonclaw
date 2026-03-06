@@ -1,3 +1,4 @@
+// Package gateway provides action_id context and request logging.
 package gateway
 
 import (

@@ -1,3 +1,4 @@
+// Package architect (pool) provides bounded WorkerPool for skill execution.
 package architect
 
 import (

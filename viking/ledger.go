@@ -1,3 +1,4 @@
+// Package viking provides audit ledger for action tracing.
 package viking
 
 import (

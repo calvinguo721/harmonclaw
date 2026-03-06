@@ -1,3 +1,4 @@
+// Package bus provides inter-core message passing for Governor, Butler, Architect.
 package bus
 
 const bufSize = 64

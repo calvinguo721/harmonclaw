@@ -1,3 +1,4 @@
+// Package llm (deepseek) provides DeepSeek API client.
 package llm
 
 import (
@@ -30,6 +31,19 @@ type DeepSeekClient struct {
 	apiKey     string
 	endpoint   string
 	httpClient *http.Client
+}
+
+// NewProvider returns DeepSeek client or StubProvider when API key is not set.
+func NewProvider() (Provider, error) {
+	key := os.Getenv("DEEPSEEK_API_KEY")
+	if key == "" {
+		return &StubProvider{}, nil
+	}
+	c, err := NewDeepSeekClient()
+	if err != nil {
+		return nil, err
+	}
+	return c, nil
 }
 
 func NewDeepSeekClient() (*DeepSeekClient, error) {

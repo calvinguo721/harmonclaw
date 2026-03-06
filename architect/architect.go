@@ -1,3 +1,4 @@
+// Package architect manages skill execution and worker pool.
 package architect
 
 import (

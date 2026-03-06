@@ -1,4 +1,4 @@
-.PHONY: build build-rv test run
+.PHONY: build build-rv test smoke run
 
 build:
 	go build ./cmd/harmonclaw/
@@ -9,6 +9,9 @@ build-rv:
 test:
 	go vet ./...
 	go build ./cmd/harmonclaw/
+
+smoke:
+	go test -count=1 ./test/ -run TestSmoke -timeout 60s
 
 run:
 	go run ./cmd/harmonclaw/

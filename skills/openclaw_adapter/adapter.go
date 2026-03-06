@@ -1,3 +1,4 @@
+// Package openclaw_adapter proxies OpenClaw API.
 package openclaw_adapter
 
 import (

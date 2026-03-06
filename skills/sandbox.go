@@ -1,3 +1,4 @@
+// Package skills (sandbox) provides RunSandboxed with timeout and recover.
 package skills
 
 import (

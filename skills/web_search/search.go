@@ -1,3 +1,4 @@
+// Package web_search provides SearXNG search skill.
 package web_search
 
 import (

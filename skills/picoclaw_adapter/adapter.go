@@ -1,3 +1,4 @@
+// Package picoclaw_adapter proxies PicoClaw for MCU-level devices.
 package picoclaw_adapter
 
 import (

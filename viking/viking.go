@@ -1,3 +1,4 @@
+// Package viking provides memory store and file persistence.
 package viking
 
 import (

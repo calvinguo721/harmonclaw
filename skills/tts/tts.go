@@ -1,3 +1,4 @@
+// Package tts provides EdgeTTS and PiperTTS synthesis.
 package tts
 
 import (

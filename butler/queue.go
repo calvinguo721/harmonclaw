@@ -1,3 +1,4 @@
+// Package butler (queue) provides RealtimeQueue for TTS/SSE priority.
 package butler
 
 import (

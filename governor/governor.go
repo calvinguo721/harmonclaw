@@ -1,3 +1,4 @@
+// Package governor provides security, quota, and policy enforcement.
 package governor
 
 import (

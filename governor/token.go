@@ -1,3 +1,4 @@
+// Package governor (token) provides HMAC-SHA256 JWT-like token generation.
 package governor
 
 import (

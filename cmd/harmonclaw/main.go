@@ -1,3 +1,4 @@
+// Package main is the HarmonClaw entry point.
 package main
 
 import (
@@ -115,7 +116,7 @@ func main() {
 	governor.InitSecureClient(ledger, sovMode, sovDomains)
 	gateway.SovereigntyMode = sovMode
 
-	provider, err := llm.NewDeepSeekClient()
+	provider, err := llm.NewProvider()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
 		os.Exit(1)
@@ -179,9 +180,10 @@ func main() {
 	}()
 
 	// --- boot log ---
-	log.Printf("[BOOT] version=%s rules_sha256=%s skills=[%s] cores=[governor:%s, butler:%s, architect:%s]",
+	configs := "policies=" + fmt.Sprintf("%d", len(policies)) + " sovereignty=" + sovMode
+	log.Printf("[BOOT] version=%s rules_sha256=%s skills=[%s] cores=[governor:%s, butler:%s, architect:%s] configs=[%s]",
 		version, rulesSHA, strings.Join(skillList, ", "),
-		gov.Status(), b.Status(), a.Status())
+		gov.Status(), b.Status(), a.Status(), configs)
 
 	// --- gateway ---
 	srv := gateway.New(":8080", gov, b, a, ledger, policies, version)

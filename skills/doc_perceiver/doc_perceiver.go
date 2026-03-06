@@ -1,3 +1,4 @@
+// Package doc_perceiver provides document perception skill.
 package doc_perceiver
 
 import (

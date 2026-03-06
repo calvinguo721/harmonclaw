@@ -1,3 +1,4 @@
+// Package llm defines Provider interface and message types.
 package llm
 
 type Message struct {

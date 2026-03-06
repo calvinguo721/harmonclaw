@@ -1,3 +1,4 @@
+// Package viking provides atomic SafeWrite with Merkle audit.
 package viking
 
 import (

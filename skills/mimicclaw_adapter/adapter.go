@@ -1,3 +1,4 @@
+// Package mimicclaw_adapter proxies MimicClaw imitation learning API.
 package mimicclaw_adapter
 
 import (

@@ -1,3 +1,4 @@
+// Package nanoclaw_adapter proxies NanoClaw for resource-constrained devices.
 package nanoclaw_adapter
 
 import (

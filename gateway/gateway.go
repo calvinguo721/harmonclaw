@@ -1,3 +1,4 @@
+// Package gateway provides HTTP routing and handlers for HarmonClaw.
 package gateway
 
 import (

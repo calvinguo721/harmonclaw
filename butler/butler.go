@@ -1,3 +1,4 @@
+// Package butler handles chat and user interaction.
 package butler
 
 import (

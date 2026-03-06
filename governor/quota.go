@@ -1,3 +1,4 @@
+// Package governor (quota) provides per-user and per-skill rate limiting.
 package governor
 
 import (

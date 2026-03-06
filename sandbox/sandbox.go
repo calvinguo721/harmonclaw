@@ -1,3 +1,4 @@
+// Package sandbox provides skill whitelist and security guard.
 package sandbox
 
 var approvedSkills = map[string]bool{

@@ -1,3 +1,4 @@
+// Package viking provides path helpers for engrams.
 package viking
 
 import (
