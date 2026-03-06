@@ -152,6 +152,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	actionID := GetActionID(r.Context())
 	s.Ledger.Record(viking.LedgerEntry{
 		OperatorID: "default",
 		ActionType: "chat",
@@ -159,9 +160,10 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		Result:     "success",
 		ClientIP:   r.RemoteAddr,
 		Timestamp:  time.Now().Format(time.RFC3339),
-		ActionID:   GetActionID(r.Context()),
+		ActionID:   actionID,
 	})
 	writeJSON(w, http.StatusOK, chatResponse{
+		ActionID: actionID,
 		Choices: []chatChoice{
 			{Message: llm.Message{Role: "assistant", Content: resp.Content}},
 		},
@@ -434,7 +436,8 @@ type chatChoice struct {
 }
 
 type chatResponse struct {
-	Choices []chatChoice `json:"choices"`
+	ActionID string       `json:"action_id,omitempty"`
+	Choices  []chatChoice `json:"choices"`
 }
 
 // --- helpers ---

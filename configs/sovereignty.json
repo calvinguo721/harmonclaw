@@ -1,0 +1,17 @@
+{
+  "version": "1.0",
+  "modes": {
+    "shadow": {
+      "description": "完全离线，无出网",
+      "allowed_domains": []
+    },
+    "airlock": {
+      "description": "受控出网，白名单",
+      "allowed_domains": ["api.deepseek.com", "localhost", "127.0.0.1", "*.searxng.org"]
+    },
+    "opensea": {
+      "description": "开放出网",
+      "allowed_domains": ["*"]
+    }
+  }
+}

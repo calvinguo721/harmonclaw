@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"expvar"
 	"fmt"
 	"log"
@@ -80,13 +81,34 @@ func main() {
 
 	guard := sandbox.NewWhitelist()
 
+	// --- load configs ---
+	policyPath := os.Getenv("HC_IRONCLAW_POLICIES")
+	if policyPath == "" {
+		policyPath = "configs/policies.json"
+	}
 	var policies []ironclaw.Policy
-	if path := os.Getenv("HC_IRONCLAW_POLICIES"); path != "" {
-		var err error
-		policies, err = ironclaw.LoadPolicies(path)
-		if err != nil {
-			log.Printf("ironclaw: load policies failed: %v", err)
+	policies, err = ironclaw.LoadPolicies(policyPath)
+	if err != nil {
+		log.Printf("[BOOT] policies: %s (fallback: empty)", err)
+		policies = nil
+	} else {
+		log.Printf("[BOOT] policies: loaded %d from %s", len(policies), policyPath)
+	}
+
+	sovereigntyPath := "configs/sovereignty.json"
+	if data, err := os.ReadFile(sovereigntyPath); err == nil {
+		var sov struct {
+			Version string `json:"version"`
+			Modes   map[string]struct {
+				Desc   string   `json:"description"`
+				Domains []string `json:"allowed_domains"`
+			} `json:"modes"`
 		}
+		if json.Unmarshal(data, &sov) == nil {
+			log.Printf("[BOOT] sovereignty: loaded from %s (version=%s)", sovereigntyPath, sov.Version)
+		}
+	} else {
+		log.Printf("[BOOT] sovereignty: %s (using default)", err)
 	}
 
 	// --- three cores: Governor → Butler → Architect ---
