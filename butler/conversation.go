@@ -112,6 +112,7 @@ func (c *ConversationManager) persist(userID string, msgs []llm.Message) error {
 		os.Remove(tmp)
 		return err
 	}
+	f.Close()
 	return os.Rename(tmp, path)
 }
 
