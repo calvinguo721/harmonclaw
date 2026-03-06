@@ -10,8 +10,10 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"time"
 
 	"harmonclaw/architect"
+	"harmonclaw/bus"
 	"harmonclaw/butler"
 	"harmonclaw/gateway"
 	"harmonclaw/governor"
@@ -53,7 +55,6 @@ func main() {
 		skillList = append(skillList, id)
 	}
 	sort.Strings(skillList)
-	log.Printf("[BOOT] version=%s rules_sha256=%s skills=[%s]", version, rulesSHA, strings.Join(skillList, ", "))
 
 	// --- infrastructure ---
 	provider, err := llm.NewDeepSeekClient()
@@ -77,24 +78,6 @@ func main() {
 
 	guard := sandbox.NewWhitelist()
 
-	// --- three-body agents ---
-	b := butler.New(provider, mem, ledger)
-	a := architect.New(guard, ledger)
-	gov := governor.New(ledger)
-
-	// grant wiring
-	b.SetGrantFunc(gov.RequestGrant)
-	a.SetGrantFunc(gov.RequestGrant)
-
-	// heartbeat wiring
-	gov.WatchAgent("butler", b.Heartbeat(), func() { b.Stop(); b.Start() })
-	gov.WatchAgent("architect", a.Heartbeat(), func() { a.Stop(); a.Start() })
-
-	// ignition
-	b.Start()
-	a.Start()
-	gov.Start()
-
 	var policies []ironclaw.Policy
 	if path := os.Getenv("HC_IRONCLAW_POLICIES"); path != "" {
 		var err error
@@ -103,6 +86,68 @@ func main() {
 			log.Printf("ironclaw: load policies failed: %v", err)
 		}
 	}
+
+	// --- three cores: Governor → Butler → Architect ---
+	gov := governor.New(ledger)
+	b := butler.New(provider, mem, ledger)
+	a := architect.New(guard, ledger)
+
+	b.SetGrantFunc(gov.RequestGrant)
+	a.SetGrantFunc(gov.RequestGrant)
+
+	a.Pool().Start()
+
+	// --- pulse heartbeats ---
+	go gov.Pulse()
+	go b.Pulse()
+	go a.Pulse()
+
+	// --- bus monitor: 15s no pulse → degraded ---
+	lastPulse := map[bus.CoreID]time.Time{
+		bus.Governor:  time.Now(),
+		bus.Butler:    time.Now(),
+		bus.Architect: time.Now(),
+	}
+	go func() {
+		ch := bus.Subscribe()
+		ticker := time.NewTicker(15 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case m := <-ch:
+				if m.Type == "pulse" {
+					lastPulse[m.From] = time.Now()
+					switch m.From {
+					case bus.Governor:
+						gov.SetOK()
+					case bus.Butler:
+						b.SetOK()
+					case bus.Architect:
+						a.SetOK()
+					}
+				}
+			case <-ticker.C:
+				now := time.Now()
+				for core, t := range lastPulse {
+					if now.Sub(t) > 15*time.Second {
+						switch core {
+						case bus.Governor:
+							gov.SetDegraded()
+						case bus.Butler:
+							b.SetDegraded()
+						case bus.Architect:
+							a.SetDegraded()
+						}
+					}
+				}
+			}
+		}
+	}()
+
+	// --- boot log ---
+	log.Printf("[BOOT] version=%s rules_sha256=%s skills=[%s] cores=[governor:%s, butler:%s, architect:%s]",
+		version, rulesSHA, strings.Join(skillList, ", "),
+		gov.Status(), b.Status(), a.Status())
 
 	// --- gateway ---
 	srv := gateway.New(":8080", gov, b, a, ledger, policies, version)

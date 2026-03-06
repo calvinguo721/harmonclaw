@@ -5,7 +5,9 @@ import (
 	"sync"
 	"time"
 
+	"harmonclaw/bus"
 	"harmonclaw/sandbox"
+	"harmonclaw/skills"
 	"harmonclaw/viking"
 )
 
@@ -16,77 +18,63 @@ type SkillResult struct {
 	Result  string
 }
 
-type Agent struct {
-	guard   sandbox.Guard
-	ledger  viking.Ledger
+type Architect struct {
+	guard  sandbox.Guard
+	ledger viking.Ledger
+	pool   *WorkerPool
 	grantFn func(string, string) bool
 
-	hb      chan time.Time
-	done    chan struct{}
-	mu      sync.Mutex
-	running bool
+	mu     sync.Mutex
+	status string
 }
 
-func New(guard sandbox.Guard, ledger viking.Ledger) *Agent {
-	return &Agent{
+func New(guard sandbox.Guard, ledger viking.Ledger) *Architect {
+	return &Architect{
 		guard:  guard,
 		ledger: ledger,
-		hb:     make(chan time.Time, 1),
+		pool:   NewWorkerPool(),
+		status: "ok",
 	}
 }
 
-func (a *Agent) SetGrantFunc(fn func(string, string) bool) { a.grantFn = fn }
-func (a *Agent) Heartbeat() <-chan time.Time                { return a.hb }
+func (a *Architect) SetGrantFunc(fn func(string, string) bool) { a.grantFn = fn }
+func (a *Architect) Pool() *WorkerPool                        { return a.pool }
 
-func (a *Agent) Status() string {
+func (a *Architect) Status() string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.running {
-		return "ok"
-	}
-	return "degraded"
+	return a.status
 }
 
-func (a *Agent) Start() {
+func (a *Architect) SetOK() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.running {
-		return
-	}
-	a.done = make(chan struct{})
-	a.running = true
-	go a.pulse()
-	log.Println("architect: online")
+	a.status = "ok"
 }
 
-func (a *Agent) Stop() {
+func (a *Architect) SetDegraded() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if !a.running {
-		return
-	}
-	close(a.done)
-	a.running = false
-	log.Println("architect: offline")
+	a.status = "degraded"
 }
 
-func (a *Agent) pulse() {
+func (a *Architect) Pulse() {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			select {
-			case a.hb <- time.Now():
-			default:
-			}
-		case <-a.done:
-			return
-		}
+	for range ticker.C {
+		bus.Send(bus.Message{
+			From:    bus.Architect,
+			Type:    "pulse",
+			Payload: a.Status(),
+		})
 	}
 }
 
-func (a *Agent) HandleSkill(skillID string) SkillResult {
+func (a *Architect) RegisterSkill(name string, skill skills.Skill) {
+	skills.Register(skill)
+}
+
+func (a *Architect) HandleSkill(skillID string) SkillResult {
 	allowed, verdict := a.guard.CheckSkill(skillID)
 
 	if !allowed {

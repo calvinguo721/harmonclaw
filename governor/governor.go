@@ -5,135 +5,63 @@ import (
 	"sync"
 	"time"
 
+	"harmonclaw/bus"
 	"harmonclaw/viking"
 )
 
-const (
-	heartbeatTimeout  = 30 * time.Second
-	summarizeInterval = 1 * time.Hour
-)
+type Governor struct {
+	quota  *Quota
+	ledger viking.Ledger
 
-type watchTarget struct {
-	name    string
-	hb      <-chan time.Time
-	restart func()
+	mu     sync.Mutex
+	status string
 }
 
-type Agent struct {
-	ledger  viking.Ledger
-	quota   *Quota
-	targets []watchTarget
-
-	mu      sync.Mutex
-	done    chan struct{}
-	running bool
-}
-
-func New(ledger viking.Ledger) *Agent {
-	return &Agent{ledger: ledger, quota: NewQuota()}
-}
-
-func (a *Agent) Quota() *Quota { return a.quota }
-
-func (a *Agent) WatchAgent(name string, hb <-chan time.Time, restart func()) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.targets = append(a.targets, watchTarget{name, hb, restart})
-}
-
-func (a *Agent) Start() {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.running {
-		return
+func New(ledger viking.Ledger) *Governor {
+	return &Governor{
+		quota:  NewQuota(),
+		ledger: ledger,
+		status: "ok",
 	}
-	a.done = make(chan struct{})
-	a.running = true
-
-	for _, t := range a.targets {
-		go a.watchLoop(t)
-	}
-	go a.summarizeLoop()
-
-	log.Printf("governor: online — monitoring %d agents", len(a.targets))
 }
 
-func (a *Agent) Stop() {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if !a.running {
-		return
-	}
-	close(a.done)
-	a.running = false
-	log.Println("governor: offline")
+func (g *Governor) Quota() *Quota { return g.quota }
+
+func (g *Governor) Status() string {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.status
 }
 
-func (a *Agent) Status() string {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.running {
-		return "ok"
-	}
-	return "degraded"
+func (g *Governor) SetOK() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.status = "ok"
 }
 
-func (a *Agent) RequestGrant(core, peerID string) bool {
+func (g *Governor) SetDegraded() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.status = "degraded"
+}
+
+func (g *Governor) RequestGrant(core, peerID string) bool {
 	if core == "governor" {
-		log.Printf("governor: DENY grant %s -> %s (governor never goes online)", core, peerID)
+		log.Printf("governor: DENY grant %s -> %s", core, peerID)
 		return false
 	}
 	log.Printf("governor: GRANT %s -> %s", core, peerID)
 	return true
 }
 
-// --- heartbeat monitor ---
-
-func (a *Agent) watchLoop(t watchTarget) {
-	for {
-		select {
-		case <-t.hb:
-			// agent is alive
-		case <-time.After(heartbeatTimeout):
-			log.Printf("governor: %s heartbeat TIMEOUT — attempting self-heal", t.name)
-			t.restart()
-		case <-a.done:
-			return
-		}
-	}
-}
-
-// --- periodic summarization ---
-
-func (a *Agent) summarizeLoop() {
-	ticker := time.NewTicker(summarizeInterval)
+func (g *Governor) Pulse() {
+	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			a.summarize()
-		case <-a.done:
-			return
-		}
+	for range ticker.C {
+		bus.Send(bus.Message{
+			From:    bus.Governor,
+			Type:    "pulse",
+			Payload: g.Status(),
+		})
 	}
-}
-
-func (a *Agent) summarize() {
-	entries, err := a.ledger.Latest(50)
-	if err != nil {
-		log.Printf("governor: summarize error: %v", err)
-		return
-	}
-
-	chatCount, skillCount := 0, 0
-	for _, e := range entries {
-		if e.ActionType == "chat" {
-			chatCount++
-		} else {
-			skillCount++
-		}
-	}
-
-	log.Printf("governor: DIGEST — chats=%d skills=%d entries_scanned=%d",
-		chatCount, skillCount, len(entries))
 }

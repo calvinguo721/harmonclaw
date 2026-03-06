@@ -6,88 +6,71 @@ import (
 	"sync"
 	"time"
 
+	"harmonclaw/bus"
 	"harmonclaw/llm"
 	"harmonclaw/viking"
 )
 
-type Agent struct {
+type Butler struct {
 	llm     llm.Provider
 	memory  viking.Memory
 	ledger  viking.Ledger
+	queue   *RealtimeQueue
 	grantFn func(string, string) bool
 
-	hb      chan time.Time
-	done    chan struct{}
-	mu      sync.Mutex
-	running bool
+	mu     sync.Mutex
+	status string
 }
 
-func New(provider llm.Provider, mem viking.Memory, ledger viking.Ledger) *Agent {
-	return &Agent{
+func New(provider llm.Provider, mem viking.Memory, ledger viking.Ledger) *Butler {
+	return &Butler{
 		llm:    provider,
 		memory: mem,
 		ledger: ledger,
-		hb:     make(chan time.Time, 1),
+		queue:  NewRealtimeQueue(),
+		status: "ok",
 	}
 }
 
-func (a *Agent) SetGrantFunc(fn func(string, string) bool) { a.grantFn = fn }
-func (a *Agent) Heartbeat() <-chan time.Time                { return a.hb }
+func (b *Butler) SetGrantFunc(fn func(string, string) bool) { b.grantFn = fn }
+func (b *Butler) Queue() *RealtimeQueue                     { return b.queue }
 
-func (a *Agent) Status() string {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.running {
-		return "ok"
-	}
-	return "degraded"
+func (b *Butler) Status() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.status
 }
 
-func (a *Agent) Start() {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.running {
-		return
-	}
-	a.done = make(chan struct{})
-	a.running = true
-	go a.pulse()
-	log.Println("butler: online")
+func (b *Butler) SetOK() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.status = "ok"
 }
 
-func (a *Agent) Stop() {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if !a.running {
-		return
-	}
-	close(a.done)
-	a.running = false
-	log.Println("butler: offline")
+func (b *Butler) SetDegraded() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.status = "degraded"
 }
 
-func (a *Agent) pulse() {
+func (b *Butler) Pulse() {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			select {
-			case a.hb <- time.Now():
-			default:
-			}
-		case <-a.done:
-			return
-		}
+	for range ticker.C {
+		bus.Send(bus.Message{
+			From:    bus.Butler,
+			Type:    "pulse",
+			Payload: b.Status(),
+		})
 	}
 }
 
-func (a *Agent) HandleChat(req llm.Request) (llm.Response, error) {
-	if a.grantFn != nil && !a.grantFn("butler", "deepseek-api") {
+func (b *Butler) HandleChat(req llm.Request) (llm.Response, error) {
+	if b.grantFn != nil && !b.grantFn("butler", "deepseek-api") {
 		return llm.Response{}, fmt.Errorf("grant denied: butler -> deepseek-api")
 	}
 
-	resp, err := a.llm.Chat(req)
+	resp, err := b.llm.Chat(req)
 	if err != nil {
 		return resp, err
 	}
@@ -97,11 +80,11 @@ func (a *Agent) HandleChat(req llm.Request) (llm.Response, error) {
 
 	if len(req.Messages) > 0 {
 		last := req.Messages[len(req.Messages)-1]
-		if err := a.memory.SaveMemory(user, sessionID, last.Role, last.Content); err != nil {
+		if err := b.memory.SaveMemory(user, sessionID, last.Role, last.Content); err != nil {
 			log.Printf("butler: viking save user: %v", err)
 		}
 	}
-	if err := a.memory.SaveMemory(user, sessionID, "assistant", resp.Content); err != nil {
+	if err := b.memory.SaveMemory(user, sessionID, "assistant", resp.Content); err != nil {
 		log.Printf("butler: viking save assistant: %v", err)
 	}
 

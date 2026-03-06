@@ -24,15 +24,15 @@ var SovereigntyMode = "airlock"
 type Server struct {
 	Addr      string
 	Mux       *http.ServeMux
-	Governor  *governor.Agent
-	Butler    *butler.Agent
-	Architect *architect.Agent
+	Governor  *governor.Governor
+	Butler    *butler.Butler
+	Architect *architect.Architect
 	Ledger    viking.Ledger
 	Policies  []ironclaw.Policy
 	Version   string
 }
 
-func New(addr string, gov *governor.Agent, b *butler.Agent, a *architect.Agent, ledger viking.Ledger, policies []ironclaw.Policy, version string) *Server {
+func New(addr string, gov *governor.Governor, b *butler.Butler, a *architect.Architect, ledger viking.Ledger, policies []ironclaw.Policy, version string) *Server {
 	s := &Server{
 		Addr:      addr,
 		Mux:       http.NewServeMux(),
