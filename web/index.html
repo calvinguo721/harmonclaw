@@ -1,42 +1,529 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN" data-mode="airlock">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HarmonClaw</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-            background: #0a0a0f;
-            color: #e0e0e0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 100vh;
-        }
-        .core {
-            text-align: center;
-            padding: 3rem;
-        }
-        h1 {
-            font-size: 2.5rem;
-            letter-spacing: 0.15em;
-            color: #00ff88;
-            text-shadow: 0 0 20px rgba(0,255,136,0.3);
-        }
-        p {
-            margin-top: 1rem;
-            color: #666;
-            font-size: 0.9rem;
-            letter-spacing: 0.1em;
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>HarmonClaw</title>
+<style>
+/* ═══════ CSS Variables ═══════ */
+:root {
+  --pri: #d4a017; --bg: #0f0e0a; --surf: #1a1810; --bdr: #2a2618;
+  --txt: #e0ddd0; --txt2: #8a8670; --glow: rgba(212,160,23,0.15);
+  --danger: #ff2233; --radius: 12px;
+  --trans: 0.5s cubic-bezier(.4,0,.2,1);
+}
+[data-mode="shadow"] {
+  --pri: #ff2233; --bg: #0a0508; --surf: #150a0d; --bdr: #2a1015;
+  --txt: #c0a0a0; --txt2: #6a4a50; --glow: rgba(255,34,51,0.12);
+}
+[data-mode="opensea"] {
+  --pri: #00e878; --bg: #050f0a; --surf: #0a1a10; --bdr: #152a18;
+  --txt: #d0e8d8; --txt2: #5a8a68; --glow: rgba(0,232,120,0.12);
+}
+
+/* ═══════ Reset & Base ═══════ */
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC",sans-serif;
+  background:var(--bg);color:var(--txt);height:100vh;overflow:hidden;
+  transition:background var(--trans),color var(--trans);
+}
+button{cursor:pointer;border:none;background:none;color:inherit;font:inherit}
+input{border:none;outline:none;background:none;color:inherit;font:inherit}
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--bdr);border-radius:2px}
+
+/* ═══════ App Shell ═══════ */
+.app{display:flex;flex-direction:column;height:100vh}
+.topbar{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 1.2rem;height:48px;
+  border-bottom:1px solid var(--bdr);background:var(--surf);
+  transition:background var(--trans),border-color var(--trans);
+}
+.topbar h1{font-size:.95rem;letter-spacing:.15em;color:var(--pri);
+  transition:color var(--trans)}
+.topbar-actions{display:flex;gap:.6rem;align-items:center}
+.btn-icon{
+  width:34px;height:34px;border-radius:8px;display:grid;place-items:center;
+  font-size:1.1rem;transition:transform .12s,background .2s;
+  background:var(--bdr);
+}
+.btn-icon:active{transform:scale(.88)}
+.btn-icon:hover{background:var(--pri);color:var(--bg)}
+
+/* ═══════ Panels ═══════ */
+.panels{
+  flex:1;display:grid;overflow:hidden;
+  grid-template-columns:260px 1fr 0px;
+  transition:grid-template-columns .4s cubic-bezier(.4,0,.2,1);
+}
+.panels.right-open{grid-template-columns:260px 1fr 300px}
+
+.panel{
+  display:flex;flex-direction:column;overflow:hidden;
+  border-right:1px solid var(--bdr);
+  transition:border-color var(--trans);
+}
+.panel:last-child{border-right:none;border-left:1px solid var(--bdr)}
+.panel-head{
+  padding:.7rem 1rem;font-size:.7rem;letter-spacing:.12em;
+  color:var(--txt2);text-transform:uppercase;
+  border-bottom:1px solid var(--bdr);background:var(--surf);
+  transition:background var(--trans),border-color var(--trans);
+}
+.panel-body{flex:1;overflow-y:auto;padding:.8rem}
+
+/* ═══════ Left: Ledger Observer ═══════ */
+.status-grid{
+  display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-bottom:.8rem;
+}
+.stat-card{
+  background:var(--surf);border:1px solid var(--bdr);border-radius:8px;
+  padding:.6rem .7rem;transition:background var(--trans),border-color var(--trans);
+}
+.stat-label{font-size:.6rem;color:var(--txt2);letter-spacing:.08em;text-transform:uppercase}
+.stat-value{font-size:1rem;font-weight:700;color:var(--pri);margin-top:.15rem;
+  transition:color var(--trans)}
+
+.ledger-feed{display:flex;flex-direction:column;gap:.4rem}
+.ledger-entry{
+  font-size:.72rem;font-family:"Cascadia Code","Fira Code",monospace;
+  padding:.45rem .6rem;border-radius:6px;
+  background:var(--surf);border-left:2px solid var(--bdr);
+  opacity:0;transform:translateY(6px);
+  animation:ledgerIn .3s forwards;
+  transition:background var(--trans),border-color var(--trans);
+}
+.ledger-entry[data-status="ok"]{border-left-color:var(--pri)}
+.ledger-entry[data-status="executed"]{border-left-color:#00e878}
+.ledger-entry .le-time{color:var(--txt2)}
+.ledger-entry .le-action{color:var(--pri);transition:color var(--trans)}
+.ledger-entry .le-tokens{color:var(--txt2);float:right}
+@keyframes ledgerIn{to{opacity:1;transform:translateY(0)}}
+
+/* ═══════ Center: Butler Chat ═══════ */
+.chat-flow{display:flex;flex-direction:column;gap:.7rem;padding-bottom:1rem}
+.msg{
+  max-width:82%;padding:.75rem 1rem;border-radius:var(--radius);
+  font-size:.88rem;line-height:1.55;word-break:break-word;
+  animation:msgIn .3s cubic-bezier(.4,0,.2,1);
+}
+.msg-user{
+  align-self:flex-end;
+  background:var(--pri);color:var(--bg);
+  border-bottom-right-radius:4px;
+  box-shadow:0 2px 12px var(--glow);
+}
+.msg-assistant{
+  align-self:flex-start;
+  background:var(--surf);border:1px solid var(--bdr);
+  border-bottom-left-radius:4px;
+  box-shadow:0 2px 16px rgba(0,0,0,.25);
+  transition:background var(--trans),border-color var(--trans);
+}
+.msg-cursor{display:inline-block;width:2px;height:1em;background:var(--pri);
+  animation:blink .6s infinite;vertical-align:text-bottom;margin-left:2px}
+@keyframes msgIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes blink{50%{opacity:0}}
+
+.chat-input-bar{
+  display:flex;gap:.5rem;padding:.8rem 1rem;
+  border-top:1px solid var(--bdr);background:var(--surf);
+  transition:background var(--trans),border-color var(--trans);
+}
+.chat-input{
+  flex:1;padding:.55rem .8rem;border-radius:8px;
+  background:var(--bg);border:1px solid var(--bdr);
+  transition:background var(--trans),border-color var(--trans);
+}
+.chat-input:focus{border-color:var(--pri)}
+.btn-send{
+  padding:.5rem 1.2rem;border-radius:8px;font-size:.8rem;font-weight:600;
+  letter-spacing:.06em;
+  background:var(--pri);color:var(--bg);
+  transition:transform .12s,background var(--trans);
+}
+.btn-send:active{transform:scale(.92)}
+.btn-send:disabled{opacity:.4}
+
+/* ═══════ Right: Sandbox Terminal ═══════ */
+.sandbox-term{
+  font-family:"Cascadia Code","Fira Code",monospace;font-size:.72rem;
+  line-height:1.6;color:var(--txt2);
+  white-space:pre-wrap;word-break:break-all;
+}
+.sandbox-term .st-ok{color:#00e878}
+.sandbox-term .st-blocked{color:var(--danger)}
+.sandbox-term .st-prompt{color:var(--pri);transition:color var(--trans)}
+.sandbox-input-bar{
+  display:flex;gap:.4rem;padding:.6rem .8rem;
+  border-top:1px solid var(--bdr);background:var(--surf);
+  transition:background var(--trans),border-color var(--trans);
+}
+.sandbox-input{
+  flex:1;padding:.4rem .6rem;border-radius:6px;font-size:.75rem;
+  font-family:"Cascadia Code","Fira Code",monospace;
+  background:var(--bg);border:1px solid var(--bdr);
+  transition:background var(--trans),border-color var(--trans);
+}
+.sandbox-input:focus{border-color:var(--pri)}
+.btn-exec{
+  padding:.4rem .8rem;border-radius:6px;font-size:.7rem;font-weight:600;
+  background:var(--bdr);color:var(--txt);
+  transition:transform .12s,background .2s;
+}
+.btn-exec:active{transform:scale(.9)}
+.btn-exec:hover{background:var(--pri);color:var(--bg)}
+
+/* ═══════ Bottom Bar ═══════ */
+.bottombar{
+  display:flex;align-items:center;justify-content:center;
+  padding:0 1.2rem;height:52px;gap:1.5rem;
+  border-top:1px solid var(--bdr);background:var(--surf);
+  transition:background var(--trans),border-color var(--trans);
+  position:relative;
+}
+.sov-switch{
+  display:flex;border-radius:8px;overflow:hidden;
+  border:1px solid var(--bdr);transition:border-color var(--trans);
+}
+.sov-btn{
+  padding:.4rem 1.1rem;font-size:.7rem;font-weight:600;
+  letter-spacing:.08em;transition:all .25s;
+}
+.sov-btn:active{transform:scale(.94)}
+.sov-btn.active{color:var(--bg)}
+.sov-shadow{color:#ff4455}
+.sov-shadow.active{background:#ff2233;color:#fff}
+.sov-airlock{color:#d4a017}
+.sov-airlock.active{background:#d4a017;color:#0f0e0a}
+.sov-opensea{color:#00e878}
+.sov-opensea.active{background:#00e878;color:#050f0a}
+
+.btn-illegal{
+  position:absolute;right:1rem;
+  padding:.3rem .6rem;border-radius:6px;font-size:.6rem;
+  letter-spacing:.06em;color:var(--txt2);
+  border:1px solid var(--bdr);opacity:.5;
+  transition:transform .12s,opacity .2s,border-color var(--trans);
+}
+.btn-illegal:hover{opacity:1;border-color:var(--danger);color:var(--danger)}
+.btn-illegal:active{transform:scale(.9)}
+
+/* ═══════ Alert Overlay ═══════ */
+.alert-overlay{
+  position:fixed;inset:0;pointer-events:none;z-index:9999;
+  background:rgba(255,0,0,0);transition:background .15s;
+}
+.alert-overlay.flash{background:rgba(255,0,0,.25)}
+.alert-toast{
+  position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(.9);
+  background:#1a0508;border:2px solid var(--danger);border-radius:16px;
+  padding:2rem 3rem;text-align:center;z-index:10000;
+  opacity:0;pointer-events:none;
+  transition:all .3s cubic-bezier(.4,0,.2,1);
+}
+.alert-toast.visible{opacity:1;transform:translate(-50%,-50%) scale(1)}
+.alert-toast h2{color:var(--danger);font-size:1.1rem;letter-spacing:.1em}
+.alert-toast p{color:#c0a0a0;font-size:.8rem;margin-top:.5rem}
+
+/* ═══════ OpenSea Breathe ═══════ */
+[data-mode="opensea"] .topbar,
+[data-mode="opensea"] .bottombar{
+  animation:breathe 3s ease-in-out infinite;
+}
+@keyframes breathe{
+  0%,100%{box-shadow:inset 0 0 12px var(--glow)}
+  50%{box-shadow:inset 0 0 28px var(--glow)}
+}
+</style>
 </head>
 <body>
-    <div class="core">
-        <h1>HARMONCLAW</h1>
-        <p>SYSTEM ONLINE &mdash; SOVEREIGNTY: AIRLOCK</p>
+
+<div class="app">
+  <!-- Top Bar -->
+  <div class="topbar">
+    <h1>HARMONCLAW</h1>
+    <div class="topbar-actions">
+      <button class="btn-icon" id="btnLab" title="Sandbox Lab">&#9881;</button>
     </div>
+  </div>
+
+  <!-- Three Panels -->
+  <div class="panels" id="panels">
+    <!-- LEFT: Ledger Observer -->
+    <div class="panel">
+      <div class="panel-head">Ledger Observer</div>
+      <div class="panel-body">
+        <div class="status-grid">
+          <div class="stat-card">
+            <div class="stat-label">Mode</div>
+            <div class="stat-value" id="statMode">AIRLOCK</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Tokens</div>
+            <div class="stat-value" id="statTokens">0</div>
+          </div>
+        </div>
+        <div class="ledger-feed" id="ledgerFeed"></div>
+      </div>
+    </div>
+
+    <!-- CENTER: Butler Chat -->
+    <div class="panel" style="border-right:1px solid var(--bdr)">
+      <div class="panel-head">Butler Mode</div>
+      <div class="panel-body" id="chatBody">
+        <div class="chat-flow" id="chatFlow"></div>
+      </div>
+      <div class="chat-input-bar">
+        <input class="chat-input" id="chatInput" placeholder="Ask HarmonClaw..." autocomplete="off">
+        <button class="btn-send" id="btnSend">SEND</button>
+      </div>
+    </div>
+
+    <!-- RIGHT: Sandbox (collapsed by default) -->
+    <div class="panel">
+      <div class="panel-head">Architect / Sandbox</div>
+      <div class="panel-body">
+        <div class="sandbox-term" id="sandboxTerm"><span class="st-prompt">harmonclaw&gt;</span> ready\n</div>
+      </div>
+      <div class="sandbox-input-bar">
+        <input class="sandbox-input" id="sandboxInput" placeholder="skill_id..." autocomplete="off">
+        <button class="btn-exec" id="btnExec">EXEC</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom Bar -->
+  <div class="bottombar">
+    <div class="sov-switch">
+      <button class="sov-btn sov-shadow" data-mode="shadow">SHADOW</button>
+      <button class="sov-btn sov-airlock active" data-mode="airlock">AIRLOCK</button>
+      <button class="sov-btn sov-opensea" data-mode="opensea">OPENSEA</button>
+    </div>
+    <button class="btn-illegal" id="btnIllegal">&#9888; ILLEGAL</button>
+  </div>
+</div>
+
+<!-- Alert Overlay -->
+<div class="alert-overlay" id="alertOverlay"></div>
+<div class="alert-toast" id="alertToast">
+  <h2>&#9888; GOVERNOR INTERCEPT</h2>
+  <p>Unauthorized access attempt detected and blocked.</p>
+</div>
+
+<script>
+/* ═══════ DOM Refs ═══════ */
+const $ = (s) => document.querySelector(s);
+const panels = $('#panels');
+const chatFlow = $('#chatFlow');
+const chatBody = $('#chatBody');
+const chatInput = $('#chatInput');
+const btnSend = $('#btnSend');
+const ledgerFeed = $('#ledgerFeed');
+const sandboxTerm = $('#sandboxTerm');
+const sandboxInput = $('#sandboxInput');
+const alertOverlay = $('#alertOverlay');
+const alertToast = $('#alertToast');
+const statMode = $('#statMode');
+const statTokens = $('#statTokens');
+
+let chatHistory = [];
+let isSending = false;
+let prevLedgerLen = 0;
+
+/* ═══════ Sovereignty Switch ═══════ */
+document.querySelectorAll('.sov-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.sov-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const mode = btn.dataset.mode;
+    document.documentElement.setAttribute('data-mode', mode);
+    statMode.textContent = mode.toUpperCase();
+  });
+});
+
+/* ═══════ Lab Panel Toggle ═══════ */
+$('#btnLab').addEventListener('click', () => {
+  panels.classList.toggle('right-open');
+});
+
+/* ═══════ Chat ═══════ */
+chatInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+});
+btnSend.addEventListener('click', sendChat);
+
+async function sendChat() {
+  const text = chatInput.value.trim();
+  if (!text || isSending) return;
+
+  isSending = true;
+  btnSend.disabled = true;
+  chatInput.value = '';
+
+  appendMsg('user', text);
+  chatHistory.push({ role: 'user', content: text });
+
+  const assistantEl = appendMsg('assistant', '');
+  const cursor = document.createElement('span');
+  cursor.className = 'msg-cursor';
+  assistantEl.appendChild(cursor);
+
+  try {
+    const res = await fetch('/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'deepseek-chat', messages: chatHistory })
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      cursor.remove();
+      assistantEl.textContent = '[Error] ' + (data.error || res.statusText);
+      return;
+    }
+
+    const content = data.choices?.[0]?.message?.content || '(empty response)';
+    chatHistory.push({ role: 'assistant', content });
+
+    await typewriter(assistantEl, content, cursor);
+  } catch (err) {
+    cursor.remove();
+    assistantEl.textContent = '[Network Error] ' + err.message;
+  } finally {
+    isSending = false;
+    btnSend.disabled = false;
+  }
+}
+
+function appendMsg(role, text) {
+  const el = document.createElement('div');
+  el.className = 'msg msg-' + role;
+  el.textContent = text;
+  chatFlow.appendChild(el);
+  chatBody.scrollTop = chatBody.scrollHeight;
+  return el;
+}
+
+async function typewriter(el, text, cursor) {
+  el.textContent = '';
+  const speed = Math.max(8, Math.min(30, 1500 / text.length));
+  for (let i = 0; i < text.length; i++) {
+    el.textContent += text[i];
+    el.appendChild(cursor);
+    chatBody.scrollTop = chatBody.scrollHeight;
+    if (i % 3 === 0) await sleep(speed);
+  }
+  cursor.remove();
+}
+
+/* ═══════ Ledger Polling ═══════ */
+async function pollLedger() {
+  try {
+    const res = await fetch('/v1/ledger/latest');
+    if (!res.ok) return;
+    const entries = await res.json();
+    if (!Array.isArray(entries)) return;
+
+    let totalTokens = 0;
+    entries.forEach(e => { totalTokens += e.tokens || 0; });
+    statTokens.textContent = totalTokens;
+
+    if (entries.length !== prevLedgerLen) {
+      renderLedger(entries);
+      prevLedgerLen = entries.length;
+    }
+  } catch (_) { /* silent on network errors */ }
+}
+
+function renderLedger(entries) {
+  ledgerFeed.innerHTML = '';
+  entries.forEach(e => {
+    const el = document.createElement('div');
+    el.className = 'ledger-entry';
+    el.setAttribute('data-status', e.status || 'ok');
+    const t = e.timestamp ? e.timestamp.substring(11, 19) : '--:--:--';
+    el.innerHTML =
+      '<span class="le-time">' + t + '</span> ' +
+      '<span class="le-action">' + (e.action || '-') + '</span>' +
+      '<span class="le-tokens">' + (e.tokens || 0) + 'tk</span>';
+    ledgerFeed.appendChild(el);
+  });
+}
+
+setInterval(pollLedger, 2000);
+pollLedger();
+
+/* ═══════ Sandbox Execute ═══════ */
+$('#btnExec').addEventListener('click', execSkill);
+sandboxInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); execSkill(); }
+});
+
+async function execSkill() {
+  const skillId = sandboxInput.value.trim();
+  if (!skillId) return;
+  sandboxInput.value = '';
+
+  termLog('<span class="st-prompt">harmonclaw&gt;</span> exec ' + esc(skillId));
+
+  try {
+    const res = await fetch('/v1/skills/execute', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ skill_id: skillId })
+    });
+    const data = await res.json();
+
+    if (res.status === 403) {
+      termLog('<span class="st-blocked">[BLOCKED] ' + esc(data.reason || data.error) +
+              ' | risk=' + esc(data.risk_level || '?') + '</span>');
+    } else if (res.ok) {
+      termLog('<span class="st-ok">[OK] ' + esc(data.result || JSON.stringify(data)) + '</span>');
+    } else {
+      termLog('[ERR] ' + esc(data.error || res.statusText));
+    }
+  } catch (err) {
+    termLog('[NET ERR] ' + esc(err.message));
+  }
+}
+
+function termLog(html) {
+  sandboxTerm.innerHTML += '\n' + html;
+  sandboxTerm.parentElement.scrollTop = sandboxTerm.parentElement.scrollHeight;
+}
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = String(s);
+  return d.innerHTML;
+}
+
+/* ═══════ Illegal Test ═══════ */
+$('#btnIllegal').addEventListener('click', async () => {
+  try {
+    const res = await fetch('/v1/test/illegal');
+    const hasAlert = res.headers.get('X-HarmonClaw-Alert');
+
+    if (res.status === 403 && hasAlert) {
+      for (let i = 0; i < 2; i++) {
+        alertOverlay.classList.add('flash');
+        await sleep(180);
+        alertOverlay.classList.remove('flash');
+        await sleep(120);
+      }
+      alertToast.classList.add('visible');
+      await sleep(2200);
+      alertToast.classList.remove('visible');
+    }
+  } catch (_) {}
+});
+
+/* ═══════ Utils ═══════ */
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+</script>
 </body>
 </html>

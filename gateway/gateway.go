@@ -2,41 +2,34 @@ package gateway
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"strings"
-	"time"
 
+	"harmonclaw/architect"
+	"harmonclaw/butler"
 	"harmonclaw/llm"
-	"harmonclaw/sandbox"
 	"harmonclaw/viking"
 )
 
 var SovereigntyMode = "airlock"
 
-type Router interface {
-	Register(mux *http.ServeMux)
-}
-
 type Server struct {
-	Addr    string
-	Mux     *http.ServeMux
-	LLM     llm.Provider
-	Viking  viking.Memory
-	Sandbox sandbox.Guard
-	Ledger  viking.Ledger
+	Addr      string
+	Mux       *http.ServeMux
+	Butler    *butler.Agent
+	Architect *architect.Agent
+	Ledger    viking.Ledger
 }
 
-func New(addr string, provider llm.Provider, mem viking.Memory, guard sandbox.Guard, ledger viking.Ledger) *Server {
+func New(addr string, b *butler.Agent, a *architect.Agent, ledger viking.Ledger) *Server {
 	s := &Server{
-		Addr:    addr,
-		Mux:     http.NewServeMux(),
-		LLM:     provider,
-		Viking:  mem,
-		Sandbox: guard,
-		Ledger:  ledger,
+		Addr:      addr,
+		Mux:       http.NewServeMux(),
+		Butler:    b,
+		Architect: a,
+		Ledger:    ledger,
 	}
 	s.routes()
 	return s
@@ -94,33 +87,12 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := s.LLM.Chat(req)
+	resp, err := s.Butler.HandleChat(req)
 	if err != nil {
-		log.Printf("llm chat error: %v", err)
-		writeError(w, http.StatusBadGateway, "llm upstream error")
+		log.Printf("butler chat error: %v", err)
+		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
-
-	sessionID := fmt.Sprintf("%d", time.Now().UnixMilli())
-	const user = "default"
-
-	if len(req.Messages) > 0 {
-		last := req.Messages[len(req.Messages)-1]
-		if err := s.Viking.SaveMemory(user, sessionID, last.Role, last.Content); err != nil {
-			log.Printf("viking save user msg: %v", err)
-		}
-	}
-	if err := s.Viking.SaveMemory(user, sessionID, "assistant", resp.Content); err != nil {
-		log.Printf("viking save assistant msg: %v", err)
-	}
-
-	s.Ledger.Record(viking.LedgerEntry{
-		Timestamp: time.Now().Format(time.RFC3339),
-		Role:      "assistant",
-		Action:    "chat",
-		Tokens:    len(resp.Content) / 4,
-		Status:    "ok",
-	})
 
 	writeJSON(w, http.StatusOK, chatResponse{
 		Choices: []chatChoice{
@@ -143,30 +115,20 @@ func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	allowed, verdict := s.Sandbox.CheckSkill(req.SkillID)
+	result := s.Architect.HandleSkill(req.SkillID)
 
-	if !allowed {
-		log.Printf("sandbox BLOCKED skill=%q verdict=%q", req.SkillID, verdict)
+	if !result.Allowed {
 		writeJSON(w, http.StatusForbidden, blockResponse{
 			Error:     "BLOCKED",
 			RiskLevel: "CRITICAL",
-			Reason:    verdict,
+			Reason:    result.Verdict,
 		})
 		return
 	}
 
-	log.Printf("sandbox APPROVED skill=%q", req.SkillID)
-	s.Ledger.Record(viking.LedgerEntry{
-		Timestamp: time.Now().Format(time.RFC3339),
-		Role:      "system",
-		Action:    "skill:" + req.SkillID,
-		Tokens:    0,
-		Status:    "executed",
-	})
-
 	writeJSON(w, http.StatusOK, map[string]string{
-		"status": "executed",
-		"result": "All systems nominal",
+		"status": result.Status,
+		"result": result.Result,
 	})
 }
 
