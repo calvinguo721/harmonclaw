@@ -5,8 +5,9 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
-	"log"
 	"net/http"
+
+	"harmonclaw/pkg/log"
 )
 
 type contextKey string
@@ -35,13 +36,9 @@ func GetActionID(ctx context.Context) string {
 	return ""
 }
 
-func Log(ctx context.Context, format string, args ...any) {
+func Log(ctx context.Context, msg string, args ...any) {
 	aid := GetActionID(ctx)
-	if aid != "" {
-		log.Printf("[action_id=%s] "+format, append([]any{aid}, args...)...)
-	} else {
-		log.Printf(format, args...)
-	}
+	log.Infof(aid, msg, args...)
 }
 
 func actionMiddleware(next http.Handler) http.Handler {

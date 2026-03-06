@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 )
 
 // LedgerEntry 等保 7 字段审计格式
@@ -34,18 +35,21 @@ type FileLedger struct {
 	ch    chan LedgerEntry
 }
 
-func NewFileLedger() (*FileLedger, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil, fmt.Errorf("get home dir: %w", err)
+// NewFileLedger creates a ledger. If ledgerDir is empty, uses ~/.harmonclaw/ledger.
+func NewFileLedger(ledgerDir string) (*FileLedger, error) {
+	if ledgerDir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, fmt.Errorf("get home dir: %w", err)
+		}
+		ledgerDir = filepath.Join(home, ".harmonclaw", "ledger")
 	}
-	dir := filepath.Join(home, ".harmonclaw", "viking")
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(ledgerDir, 0755); err != nil {
 		return nil, fmt.Errorf("mkdir ledger: %w", err)
 	}
 
 	l := &FileLedger{
-		fpath: filepath.Join(dir, "ledger.json"),
+		fpath: filepath.Join(ledgerDir, "ledger.jsonl"),
 		ch:    make(chan LedgerEntry, 64),
 	}
 	go l.drain()
@@ -71,14 +75,9 @@ func (l *FileLedger) drain() {
 			log.Printf("ledger marshal: %v", err)
 			continue
 		}
-		f, err := os.OpenFile(l.fpath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			log.Printf("ledger open: %v", err)
-			continue
+		if err := LedgerSafeAppend(l.fpath, data); err != nil {
+			log.Printf("ledger write: %v", err)
 		}
-		f.Write(data)
-		f.Write([]byte("\n"))
-		f.Close()
 	}
 }
 
@@ -104,16 +103,25 @@ func (l *FileLedger) Latest(n int) ([]LedgerEntry, error) {
 
 	entries := make([]LedgerEntry, 0, n)
 	for _, line := range lines[start:] {
-		if len(line) == 0 {
+		jsonPart := ledgerLineJSON(line)
+		if len(jsonPart) == 0 {
 			continue
 		}
 		var e LedgerEntry
-		if err := json.Unmarshal(line, &e); err != nil {
+		if err := json.Unmarshal(jsonPart, &e); err != nil {
 			continue
 		}
 		entries = append(entries, e)
 	}
 	return entries, nil
+}
+
+func ledgerLineJSON(line []byte) []byte {
+	s := string(line)
+	if idx := strings.Index(s, "\t"); idx >= 0 {
+		return []byte(s[:idx])
+	}
+	return line
 }
 
 func (l *FileLedger) TraceByActionID(actionID string) ([]LedgerEntry, error) {
@@ -128,11 +136,12 @@ func (l *FileLedger) TraceByActionID(actionID string) ([]LedgerEntry, error) {
 	lines := bytes.Split(data, []byte("\n"))
 	var entries []LedgerEntry
 	for _, line := range lines {
-		if len(line) == 0 {
+		jsonPart := ledgerLineJSON(line)
+		if len(jsonPart) == 0 {
 			continue
 		}
 		var e LedgerEntry
-		if err := json.Unmarshal(line, &e); err != nil {
+		if err := json.Unmarshal(jsonPart, &e); err != nil {
 			continue
 		}
 		if e.ActionID == actionID {

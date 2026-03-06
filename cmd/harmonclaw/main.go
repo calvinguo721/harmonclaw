@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"expvar"
 	"fmt"
-	"log"
 	"os"
 	"runtime"
 	"sort"
@@ -17,10 +16,12 @@ import (
 	"harmonclaw/architect"
 	"harmonclaw/bus"
 	"harmonclaw/butler"
+	"harmonclaw/configs"
 	"harmonclaw/gateway"
 	"harmonclaw/governor"
 	"harmonclaw/governor/ironclaw"
 	"harmonclaw/llm"
+	hclog "harmonclaw/pkg/log"
 	"harmonclaw/sandbox"
 	"harmonclaw/skills"
 	"harmonclaw/viking"
@@ -46,6 +47,22 @@ func init() {
 const version = "v0.1.7"
 
 func main() {
+	configPath := os.Getenv("HC_CONFIG")
+	if configPath == "" {
+		configPath = "configs/config.json"
+	}
+	cfg, err := configs.Load(configPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "fatal: config load: %v\n", err)
+		os.Exit(1)
+	}
+	hclog.SetLevel(cfg.LogLevel)
+
+	if err := cfg.EnsureDirs(); err != nil {
+		fmt.Fprintf(os.Stderr, "fatal: ensure dirs: %v\n", err)
+		os.Exit(1)
+	}
+
 	// --- boot banner (IRON RULE #8) ---
 	rulesSHA := ""
 	if data, err := os.ReadFile(".cursorrules"); err == nil {
@@ -54,49 +71,47 @@ func main() {
 	} else {
 		rulesSHA = "unavailable"
 	}
+	configSHA := ""
+	if data, err := os.ReadFile(configPath); err == nil {
+		h := sha256.Sum256(data)
+		configSHA = hex.EncodeToString(h[:])
+	} else {
+		configSHA = "unavailable"
+	}
 	skillList := make([]string, 0, len(skills.Registry))
 	for id := range skills.Registry {
 		skillList = append(skillList, id)
 	}
 	sort.Strings(skillList)
 
+	hclog.Infof("", "config_path=%s config_sha256=%s version=%s data_dir=%s", configPath, configSHA, cfg.Version, cfg.DataDir)
+
 	// --- infrastructure ---
-	ledger, err := viking.NewFileLedger()
+	ledger, err := viking.NewFileLedger(cfg.LedgerDir())
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
-		os.Exit(1)
+		hclog.Fatal("ledger init: %v", err)
 	}
 	defer ledger.Close()
 
-	mem, err := viking.NewFileStore()
+	mem, err := viking.NewFileStore(cfg.VikingBaseDir())
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
-		os.Exit(1)
+		hclog.Fatal("store init: %v", err)
 	}
 
 	guard := sandbox.NewWhitelist()
 
-	// --- load configs ---
-	policyPath := os.Getenv("HC_IRONCLAW_POLICIES")
-	if policyPath == "" {
-		policyPath = "configs/policies.json"
-	}
 	var policies []ironclaw.Policy
-	policies, err = ironclaw.LoadPolicies(policyPath)
+	policies, err = ironclaw.LoadPolicies(cfg.PoliciesPath)
 	if err != nil {
-		log.Printf("[BOOT] policies: %s (fallback: empty)", err)
+		hclog.Infof("", "policies: %s (fallback: empty)", err)
 		policies = nil
 	} else {
-		log.Printf("[BOOT] policies: loaded %d from %s", len(policies), policyPath)
+		hclog.Infof("", "policies: loaded %d from %s", len(policies), cfg.PoliciesPath)
 	}
 
-	sovereigntyPath := "configs/sovereignty.json"
-	sovMode := os.Getenv("HC_SOVEREIGNTY_MODE")
-	if sovMode == "" {
-		sovMode = "airlock"
-	}
+	sovMode := cfg.SovereigntyMode
 	sovDomains := []string{}
-	if data, err := os.ReadFile(sovereigntyPath); err == nil {
+	if data, err := os.ReadFile(cfg.SovereigntyPath); err == nil {
 		var sov struct {
 			Version string `json:"version"`
 			Modes   map[string]struct {
@@ -105,13 +120,13 @@ func main() {
 			} `json:"modes"`
 		}
 		if json.Unmarshal(data, &sov) == nil {
-			log.Printf("[BOOT] sovereignty: loaded from %s (version=%s)", sovereigntyPath, sov.Version)
+			hclog.Infof("", "sovereignty: loaded from %s (version=%s)", cfg.SovereigntyPath, sov.Version)
 			if m, ok := sov.Modes[sovMode]; ok {
 				sovDomains = m.Domains
 			}
 		}
 	} else {
-		log.Printf("[BOOT] sovereignty: %s (using default)", err)
+		hclog.Infof("", "sovereignty: %s (using default)", err)
 	}
 	governor.InitSecureClient(ledger, sovMode, sovDomains)
 	gateway.SovereigntyMode = sovMode
@@ -180,15 +195,16 @@ func main() {
 	}()
 
 	// --- boot log ---
-	configs := "policies=" + fmt.Sprintf("%d", len(policies)) + " sovereignty=" + sovMode
-	log.Printf("[BOOT] version=%s rules_sha256=%s skills=[%s] cores=[governor:%s, butler:%s, architect:%s] configs=[%s]",
+	configsStr := "policies=" + fmt.Sprintf("%d", len(policies)) + " sovereignty=" + sovMode
+	hclog.Infof("", "version=%s rules_sha256=%s skills=[%s] cores=[governor:%s, butler:%s, architect:%s] configs=[%s]",
 		version, rulesSHA, strings.Join(skillList, ", "),
-		gov.Status(), b.Status(), a.Status(), configs)
+		gov.Status(), b.Status(), a.Status(), configsStr)
 
 	// --- gateway ---
-	srv := gateway.New(":8080", gov, b, a, ledger, policies, version)
-	log.Printf("HarmonClaw listening on %s  [sovereignty=%s]", srv.Addr, gateway.SovereigntyMode)
+	addr := ":" + cfg.Port
+	srv := gateway.NewWithEngramDir(addr, gov, b, a, ledger, policies, version, cfg.VikingBaseDir())
+	hclog.Infof("", "HarmonClaw listening on %s [sovereignty=%s]", srv.Addr, gateway.SovereigntyMode)
 	if err := srv.ListenAndServe(); err != nil {
-		log.Fatalf("server died: %v", err)
+		hclog.Fatal("server died: %v", err)
 	}
 }

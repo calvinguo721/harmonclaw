@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -35,13 +36,17 @@ const baseURL = "http://127.0.0.1:18080"
 func TestSmoke(t *testing.T) {
 	os.Setenv("DEEPSEEK_API_KEY", "")
 	os.Setenv("HC_AUTH_ENABLED", "")
-	ledger, err := viking.NewFileLedger()
+	ledgerDir := filepath.Join(os.TempDir(), "harmonclaw-smoke-ledger")
+	os.MkdirAll(ledgerDir, 0755)
+	ledger, err := viking.NewFileLedger(ledgerDir)
 	if err != nil {
 		t.Fatalf("ledger: %v", err)
 	}
 	defer ledger.Close()
 
-	mem, _ := viking.NewFileStore()
+	vikingDir := filepath.Join(os.TempDir(), "harmonclaw-smoke-viking")
+	os.MkdirAll(vikingDir, 0755)
+	mem, _ := viking.NewFileStore(vikingDir)
 	guard := sandbox.NewWhitelist()
 	policies, _ := ironclaw.LoadPolicies("configs/policies.json")
 	governor.InitSecureClient(ledger, "airlock", []string{"*"})
@@ -96,7 +101,7 @@ func TestSmoke(t *testing.T) {
 		}
 	}()
 
-	srv := gateway.New(":18080", gov, b, a, ledger, policies, "v0.1.7-test")
+	srv := gateway.NewWithEngramDir(":18080", gov, b, a, ledger, policies, "v0.1.7-test", vikingDir)
 	go func() {
 		_ = srv.ListenAndServe()
 	}()
@@ -249,6 +254,22 @@ func TestSmoke(t *testing.T) {
 		n, _ := resp.Body.Read(buf)
 		if n == 0 {
 			t.Error("chat SSE: expected at least one byte")
+		}
+	})
+
+	t.Run("panic_recovery", func(t *testing.T) {
+		resp, err := http.Get(baseURL + "/v1/test/panic")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 500 {
+			t.Errorf("panic recovery: want 500, got %d", resp.StatusCode)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		var d map[string]string
+		if json.Unmarshal(body, &d) == nil && d["error"] != "internal server error" {
+			t.Errorf("panic recovery: want error message, got %v", d)
 		}
 	})
 

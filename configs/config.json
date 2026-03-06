@@ -1,0 +1,7 @@
+{
+  "version": "1.0",
+  "port": 8080,
+  "data_dir": "",
+  "log_level": "info",
+  "sovereignty_mode": "airlock"
+}

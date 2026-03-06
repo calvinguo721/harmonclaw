@@ -29,26 +29,32 @@ func authEnabled() bool {
 var SovereigntyMode = "airlock"
 
 type Server struct {
-	Addr      string
-	Mux       *http.ServeMux
-	Governor  *governor.Governor
-	Butler    *butler.Butler
-	Architect *architect.Architect
-	Ledger    viking.Ledger
-	Policies  []ironclaw.Policy
-	Version   string
+	Addr          string
+	Mux           *http.ServeMux
+	Governor      *governor.Governor
+	Butler        *butler.Butler
+	Architect     *architect.Architect
+	Ledger        viking.Ledger
+	Policies      []ironclaw.Policy
+	Version       string
+	EngramBaseDir string
 }
 
 func New(addr string, gov *governor.Governor, b *butler.Butler, a *architect.Architect, ledger viking.Ledger, policies []ironclaw.Policy, version string) *Server {
+	return NewWithEngramDir(addr, gov, b, a, ledger, policies, version, "")
+}
+
+func NewWithEngramDir(addr string, gov *governor.Governor, b *butler.Butler, a *architect.Architect, ledger viking.Ledger, policies []ironclaw.Policy, version string, engramBaseDir string) *Server {
 	s := &Server{
-		Addr:      addr,
-		Mux:       http.NewServeMux(),
-		Governor:  gov,
-		Butler:    b,
-		Architect: a,
-		Ledger:    ledger,
-		Policies:  policies,
-		Version:   version,
+		Addr:          addr,
+		Mux:           http.NewServeMux(),
+		Governor:      gov,
+		Butler:        b,
+		Architect:     a,
+		Ledger:        ledger,
+		Policies:      policies,
+		Version:       version,
+		EngramBaseDir: engramBaseDir,
 	}
 	s.routes()
 	return s
@@ -65,6 +71,7 @@ func (s *Server) routes() {
 	s.Mux.HandleFunc("GET /v1/ledger/trace", s.handleLedgerTrace)
 	s.Mux.HandleFunc("POST /v1/token", s.handleToken)
 	s.Mux.HandleFunc("GET /v1/test/illegal", s.handleTestIllegal)
+	s.Mux.HandleFunc("GET /v1/test/panic", s.handleTestPanic)
 	s.Mux.Handle("GET /debug/vars", expvar.Handler())
 
 	s.Mux.Handle("GET /static/", http.StripPrefix("/static", http.FileServer(http.Dir("web"))))
@@ -78,11 +85,34 @@ func (s *Server) routes() {
 }
 
 func (s *Server) ListenAndServe() error {
-	h := actionMiddleware(sovereigntyWall(s.Mux))
+	h := recoverMiddleware(s.Ledger, actionMiddleware(sovereigntyWall(s.Mux)))
 	if authEnabled() {
 		h = authMiddleware(h)
 	}
 	return http.ListenAndServe(s.Addr, h)
+}
+
+func recoverMiddleware(ledger viking.Ledger, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if rec := recover(); rec != nil {
+				actionID := GetActionID(r.Context())
+				ledger.Record(viking.LedgerEntry{
+					OperatorID: "gateway",
+					ActionType: "panic_recovered",
+					Resource:   r.URL.Path,
+					Result:     "fail",
+					ClientIP:   r.RemoteAddr,
+					Timestamp:  time.Now().Format(time.RFC3339),
+					ActionID:   actionID,
+				})
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(map[string]string{"error": "internal server error"})
+			}
+		}()
+		next.ServeHTTP(w, r)
+	})
 }
 
 func authMiddleware(next http.Handler) http.Handler {
@@ -501,7 +531,7 @@ func (s *Server) handleEngram(w http.ResponseWriter, r *http.Request) {
 	}
 	ts := time.Now().Format("20060102150405")
 	filename := ts + "_" + actionID + ".txt"
-	path, err := viking.EngramPath(filename)
+	path, err := viking.EngramPathWithBase(s.EngramBaseDir, filename)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "engram path: "+err.Error())
 		return
@@ -591,6 +621,10 @@ func (s *Server) handleTestIllegal(w http.ResponseWriter, _ *http.Request) {
 		"risk_level": "CRITICAL",
 		"message":    "stress test triggered — this incident has been logged",
 	})
+}
+
+func (s *Server) handleTestPanic(w http.ResponseWriter, _ *http.Request) {
+	panic("smoke test panic")
 }
 
 // --- request/response types ---

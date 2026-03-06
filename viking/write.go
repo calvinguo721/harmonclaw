@@ -75,3 +75,43 @@ func SafeWrite(path string, data []byte, classification string) (uint32, error) 
 
 	return crc32.ChecksumIEEE(data), nil
 }
+
+// LedgerSafeAppend atomically appends a line to a JSONL file (IRON RULE #7).
+// Format: json + "\t" + crc32_hex + "\n"
+func LedgerSafeAppend(fpath string, line []byte) error {
+	tmpPath := fpath + ".tmp"
+	dir := filepath.Dir(fpath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("mkdir %s: %w", dir, err)
+	}
+
+	existing, _ := os.ReadFile(fpath)
+	checksum := crc32.ChecksumIEEE(line)
+	appendLine := append(append(line, '\t'), []byte(fmt.Sprintf("%08x\n", checksum))...)
+	full := append(existing, appendLine...)
+
+	f, err := os.Create(tmpPath)
+	if err != nil {
+		return fmt.Errorf("create %s: %w", tmpPath, err)
+	}
+	if _, err := f.Write(full); err != nil {
+		f.Close()
+		os.Remove(tmpPath)
+		return fmt.Errorf("write %s: %w", tmpPath, err)
+	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		os.Remove(tmpPath)
+		return fmt.Errorf("fsync %s: %w", tmpPath, err)
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("close %s: %w", tmpPath, err)
+	}
+	if err := os.Rename(tmpPath, fpath); err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("rename %s -> %s: %w", tmpPath, fpath, err)
+	}
+	_ = checksum
+	return nil
+}

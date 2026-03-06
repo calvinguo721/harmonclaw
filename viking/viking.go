@@ -16,14 +16,16 @@ type FileStore struct {
 	baseDir string
 }
 
-func NewFileStore() (*FileStore, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil, fmt.Errorf("get home dir: %w", err)
+// NewFileStore creates memory store. If baseDir is empty, uses ~/.harmonclaw/viking.
+func NewFileStore(baseDir string) (*FileStore, error) {
+	if baseDir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, fmt.Errorf("get home dir: %w", err)
+		}
+		baseDir = filepath.Join(home, ".harmonclaw", "viking")
 	}
-	return &FileStore{
-		baseDir: filepath.Join(home, ".harmonclaw", "viking"),
-	}, nil
+	return &FileStore{baseDir: baseDir}, nil
 }
 
 func (fs *FileStore) SaveMemory(user, sessionID, role, content string) error {
