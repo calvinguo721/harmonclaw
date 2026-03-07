@@ -101,6 +101,62 @@ func (s *Server) handleSovereigntyPost(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handleRateLimitGet(w http.ResponseWriter, _ *http.Request) {
+	if s.RateLimiter == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"global": map[string]any{"rate": 100, "burst": 200}, "per_user": map[string]any{"rate": 10, "burst": 20}, "per_skill": map[string]any{"rate": 5, "burst": 10}})
+		return
+	}
+	cfg, _ := governor.LoadRateLimitConfig("configs/ratelimit.json")
+	writeJSON(w, http.StatusOK, map[string]any{
+		"global":   map[string]any{"rate": cfg.Global.Rate, "burst": cfg.Global.Burst},
+		"per_user": map[string]any{"rate": cfg.PerUser.Rate, "burst": cfg.PerUser.Burst},
+		"per_skill": map[string]any{"rate": cfg.PerSkill.Rate, "burst": cfg.PerSkill.Burst},
+	})
+}
+
+func (s *Server) handleRateLimitPut(w http.ResponseWriter, r *http.Request) {
+	if s.RateLimiter == nil {
+		writeError(w, r, http.StatusServiceUnavailable, "rate limiter not configured")
+		return
+	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, "failed to read body")
+		return
+	}
+	r.Body.Close()
+	var req struct {
+		Global   *struct{ Rate float64 `json:"rate"`; Burst int `json:"burst"` } `json:"global"`
+		PerUser  *struct{ Rate float64 `json:"rate"`; Burst int `json:"burst"` } `json:"per_user"`
+		PerSkill *struct{ Rate float64 `json:"rate"`; Burst int `json:"burst"` } `json:"per_skill"`
+	}
+	if json.Unmarshal(body, &req) != nil {
+		writeError(w, r, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	cfg, _ := governor.LoadRateLimitConfig("configs/ratelimit.json")
+	if req.Global != nil {
+		cfg.Global.Rate, cfg.Global.Burst = req.Global.Rate, req.Global.Burst
+	}
+	if req.PerUser != nil {
+		cfg.PerUser.Rate, cfg.PerUser.Burst = req.PerUser.Rate, req.PerUser.Burst
+	}
+	if req.PerSkill != nil {
+		cfg.PerSkill.Rate, cfg.PerSkill.Burst = req.PerSkill.Rate, req.PerSkill.Burst
+	}
+	s.RateLimiter.UpdateConfig(cfg)
+	if s.Ledger != nil {
+		s.Ledger.Record(viking.LedgerEntry{
+			OperatorID: "gateway",
+			ActionType: "ratelimit_update",
+			Resource:   "governor",
+			Result:     "ok",
+			Timestamp:  time.Now().Format(time.RFC3339),
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	govStatus := s.Governor.Status()
 	butlerStatus := s.Butler.Status()

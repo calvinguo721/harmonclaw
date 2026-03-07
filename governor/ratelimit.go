@@ -181,3 +181,10 @@ func (t *TripleRateLimiter) Allow(userID, skillID string) (ok bool, retryAfter i
 	}
 	return true, 0
 }
+
+// UpdateConfig updates rate limits dynamically.
+func (t *TripleRateLimiter) UpdateConfig(cfg RateLimitConfig) {
+	t.global = NewTokenBucket(cfg.Global.Rate, cfg.Global.Burst)
+	t.perUser = NewRateLimitMap(cfg.PerUser.Rate, cfg.PerUser.Burst)
+	t.perSkill = NewRateLimitMap(cfg.PerSkill.Rate, cfg.PerSkill.Burst)
+}

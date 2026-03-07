@@ -71,6 +71,8 @@ func (s *Server) routes() {
 	s.Mux.HandleFunc("GET /v1/health", s.handleHealth)
 	s.Mux.HandleFunc("GET /v1/governor/sovereignty", s.handleSovereigntyGet)
 	s.Mux.HandleFunc("POST /v1/governor/sovereignty", s.handleSovereigntyPost)
+	s.Mux.HandleFunc("GET /v1/governor/ratelimit", s.handleRateLimitGet)
+	s.Mux.HandleFunc("PUT /v1/governor/ratelimit", s.handleRateLimitPut)
 	s.Mux.HandleFunc("POST /v1/chat/completions", s.handleChat)
 	s.Mux.HandleFunc("POST /v1/skills/execute", s.handleSkills)
 	s.Mux.HandleFunc("POST /v1/engram/inject", s.handleEngram)
