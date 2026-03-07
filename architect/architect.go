@@ -129,8 +129,9 @@ func (a *Architect) ExecuteSkill(skillID string, input skills.SkillInput) (skill
 		}, nil
 	}
 	resultCh := make(chan skills.SkillOutput, 1)
+	timeout := SkillTimeout(skillID)
 	task := func() {
-		out := skills.RunSandboxed(context.Background(), input.TraceID, func() skills.SkillOutput {
+		out := skills.RunSandboxedWithTimeout(context.Background(), input.TraceID, timeout, func() skills.SkillOutput {
 			return sk.Execute(input)
 		})
 		resultCh <- out
