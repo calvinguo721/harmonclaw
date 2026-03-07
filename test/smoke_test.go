@@ -199,6 +199,7 @@ func TestSmoke(t *testing.T) {
 	})
 
 	t.Run("ledger_limit", func(t *testing.T) {
+		time.Sleep(50 * time.Millisecond)
 		resp, err := http.Get(baseURL + "/v1/ledger/latest?limit=5")
 		if err != nil {
 			t.Fatal(err)
