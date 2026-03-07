@@ -56,3 +56,22 @@ func TestHcToOpenClaw(t *testing.T) {
 		t.Errorf("query: want hi, got %v", oc["query"])
 	}
 }
+
+func TestAdapter_ShadowSovereignty(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"result":{"answer":"ok"}}`))
+	}))
+	defer srv.Close()
+	os.Setenv("HC_OPENCLAW_ENDPOINT", srv.URL)
+	defer os.Unsetenv("HC_OPENCLAW_ENDPOINT")
+
+	a := &Adapter{}
+	out := a.Execute(skills.SkillInput{
+		TraceID: "s1",
+		Text:    "x",
+		Args:    map[string]string{"sovereignty": "shadow"},
+	})
+	if out.Status != "error" || out.Error != "offline mode" {
+		t.Errorf("want offline mode error, got %s: %s", out.Status, out.Error)
+	}
+}
