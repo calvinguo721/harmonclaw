@@ -11,11 +11,12 @@ import (
 	"harmonclaw/viking"
 )
 
-// Chain builds: recover→firewall→ratelimit→auth→action_id→ironclaw→metrics→handler→ledger
+// Chain builds: recover→firewall→ratelimit→auth→action_id→ironclaw→metrics→logger→handler→ledger
 func Chain(mux http.Handler, ledger viking.Ledger, firewall *governor.Firewall, rateLimiter *governor.TripleRateLimiter, authEnabled bool) http.Handler {
 	h := mux
 	h = ledgerMiddleware(ledger, h)
 	h = metricsMiddleware(h)
+	h = loggerMiddleware(h)
 	h = ironclawMiddleware(h)
 	h = actionMiddleware(h)
 	if authEnabled {

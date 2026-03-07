@@ -15,7 +15,7 @@ import (
 
 func (s *Server) handleAuditQuery(w http.ResponseWriter, r *http.Request) {
 	if s.Audit == nil {
-		writeError(w, http.StatusNotImplemented, "audit not available")
+		writeError(w, r, http.StatusNotImplemented, "audit not available")
 		return
 	}
 	var req struct {
@@ -61,13 +61,13 @@ func (s *Server) handleAuditQuery(w http.ResponseWriter, r *http.Request) {
 	}
 	entries, err := s.Audit.Query(f)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeError(w, r, http.StatusInternalServerError, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, entries)
 }
 
-func (s *Server) handlePersonaGet(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handlePersonaGet(w http.ResponseWriter, r *http.Request) {
 	if s.Butler == nil || s.Butler.Persona() == nil {
 		writeJSON(w, http.StatusOK, map[string]any{"personas": []string{}, "default": "default"})
 		return
@@ -81,12 +81,12 @@ func (s *Server) handlePersonaGet(w http.ResponseWriter, _ *http.Request) {
 
 func (s *Server) handlePersonaPost(w http.ResponseWriter, r *http.Request) {
 	if s.Butler == nil || s.Butler.Persona() == nil {
-		writeError(w, http.StatusNotImplemented, "persona not available")
+		writeError(w, r, http.StatusNotImplemented, "persona not available")
 		return
 	}
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "failed to read body")
+		writeError(w, r, http.StatusBadRequest, "failed to read body")
 		return
 	}
 	r.Body.Close()
@@ -96,7 +96,7 @@ func (s *Server) handlePersonaPost(w http.ResponseWriter, r *http.Request) {
 		Default string              `json:"default"`
 	}
 	if err := json.Unmarshal(body, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid JSON")
+		writeError(w, r, http.StatusBadRequest, "invalid JSON")
 		return
 	}
 	ps := s.Butler.Persona()
@@ -110,7 +110,7 @@ func (s *Server) handlePersonaPost(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-func (s *Server) handleArchitectSkills(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleArchitectSkills(w http.ResponseWriter, r *http.Request) {
 	if s.Architect == nil || s.Architect.Registry() == nil {
 		writeJSON(w, http.StatusOK, map[string]any{"skills": []any{}})
 		return
@@ -131,7 +131,7 @@ func (s *Server) handlePipelineExecute(w http.ResponseWriter, r *http.Request) {
 	actionID := GetActionID(r.Context())
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "failed to read body")
+		writeError(w, r, http.StatusBadRequest, "failed to read body")
 		return
 	}
 	r.Body.Close()
@@ -140,11 +140,11 @@ func (s *Server) handlePipelineExecute(w http.ResponseWriter, r *http.Request) {
 		Input  string                    `json:"input"`
 	}
 	if err := json.Unmarshal(body, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid JSON")
+		writeError(w, r, http.StatusBadRequest, "invalid JSON")
 		return
 	}
 	if len(req.Stages) == 0 {
-		writeError(w, http.StatusBadRequest, "stages required")
+		writeError(w, r, http.StatusBadRequest, "stages required")
 		return
 	}
 	if req.Input == "" {
@@ -153,13 +153,13 @@ func (s *Server) handlePipelineExecute(w http.ResponseWriter, r *http.Request) {
 	pipe := architect.NewPipeline(s.Architect.Pool(), skillGuard{s.Architect}, s.Ledger, req.Stages)
 	out, err := pipe.Run(r.Context(), actionID, req.Input, s.Architect.Registry())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeError(w, r, http.StatusInternalServerError, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, out)
 }
 
-func (s *Server) handleArchitectCrons(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleArchitectCrons(w http.ResponseWriter, r *http.Request) {
 	if s.Architect == nil || s.Architect.Crons() == nil {
 		writeJSON(w, http.StatusOK, map[string]any{"crons": []any{}})
 		return
@@ -168,7 +168,7 @@ func (s *Server) handleArchitectCrons(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"crons": jobs})
 }
 
-func (s *Server) handleVikingSnapshots(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleVikingSnapshots(w http.ResponseWriter, r *http.Request) {
 	if s.VikingSnap == nil {
 		writeJSON(w, http.StatusOK, map[string]any{"snapshots": []string{}})
 		return
@@ -193,7 +193,7 @@ func (s *Server) handleVikingSearch(w http.ResponseWriter, r *http.Request) {
 		query = req.Query
 	}
 	if query == "" {
-		writeError(w, http.StatusBadRequest, "query required")
+		writeError(w, r, http.StatusBadRequest, "query required")
 		return
 	}
 	ids := s.VikingSearch.Search(query)

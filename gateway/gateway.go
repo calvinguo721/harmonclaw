@@ -7,6 +7,8 @@ import (
 	"expvar"
 	"net/http"
 	"os"
+	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -76,6 +78,7 @@ func (s *Server) routes() {
 	s.Mux.HandleFunc("GET /v1/ledger/trace", s.handleLedgerTrace)
 	s.Mux.HandleFunc("POST /v1/token", s.handleToken)
 	s.Mux.HandleFunc("POST /v1/auth/login", s.handleAuthLogin)
+	s.Mux.HandleFunc("GET /v1/version", s.handleVersion)
 	s.Mux.HandleFunc("GET /v1/test/illegal", s.handleTestIllegal)
 	s.Mux.HandleFunc("GET /v1/test/panic", s.handleTestPanic)
 	s.Mux.HandleFunc("GET /v1/audit/query", s.handleAuditQuery)
@@ -204,8 +207,39 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	json.NewEncoder(w).Encode(v)
 }
 
-func writeError(w http.ResponseWriter, status int, msg string) {
+func writeError(w http.ResponseWriter, r *http.Request, status int, msg string) {
+	if r != nil && strings.Contains(r.Header.Get("Accept"), "text/html") {
+		serveErrorPage(w, status, msg)
+		return
+	}
 	writeJSON(w, status, map[string]string{"error": msg})
+}
+
+func serveErrorPage(w http.ResponseWriter, status int, msg string) {
+	data, err := os.ReadFile("web/error.html")
+	if err != nil {
+		writeJSON(w, status, map[string]string{"error": msg})
+		return
+	}
+	html := strings.ReplaceAll(string(data), "{{CODE}}", strconv.Itoa(status))
+	html = strings.ReplaceAll(html, "{{MSG}}", strings.ReplaceAll(msg, "<", "&lt;"))
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	w.Write([]byte(html))
+}
+
+var (
+	buildTime = "unknown"
+	gitCommit = "unknown"
+)
+
+func (s *Server) handleVersion(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{
+		"version":     s.Version,
+		"build_time":  buildTime,
+		"go_version":  runtime.Version(),
+		"git_commit": gitCommit,
+	})
 }
 
 func (s *Server) findPolicy(skillID string) ironclaw.Policy {

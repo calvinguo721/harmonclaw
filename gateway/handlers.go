@@ -69,7 +69,7 @@ func (s *Server) handleSovereigntyGet(w http.ResponseWriter, _ *http.Request) {
 func (s *Server) handleSovereigntyPost(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "failed to read request body")
+		writeError(w, r, http.StatusBadRequest, "failed to read request body")
 		return
 	}
 	defer r.Body.Close()
@@ -78,7 +78,7 @@ func (s *Server) handleSovereigntyPost(w http.ResponseWriter, r *http.Request) {
 		Domains []string `json:"domains"`
 	}
 	if err := json.Unmarshal(body, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		writeError(w, r, http.StatusBadRequest, "invalid JSON: "+err.Error())
 		return
 	}
 	if req.Mode == "" {
@@ -86,7 +86,7 @@ func (s *Server) handleSovereigntyPost(w http.ResponseWriter, r *http.Request) {
 	}
 	validModes := map[string]bool{"shadow": true, "airlock": true, "opensea": true}
 	if !validModes[req.Mode] {
-		writeError(w, http.StatusBadRequest, "invalid mode: "+req.Mode)
+		writeError(w, r, http.StatusBadRequest, "invalid mode: "+req.Mode)
 		return
 	}
 	domains := req.Domains
@@ -129,18 +129,18 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 func (s *Server) handleEngram(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "failed to read request body")
+		writeError(w, r, http.StatusBadRequest, "failed to read request body")
 		return
 	}
 	defer r.Body.Close()
 
 	var req engramRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		writeError(w, r, http.StatusBadRequest, "invalid JSON: "+err.Error())
 		return
 	}
 	if req.Text == "" {
-		writeError(w, http.StatusBadRequest, "text is required")
+		writeError(w, r, http.StatusBadRequest, "text is required")
 		return
 	}
 	if req.Source != "user" && req.Source != "system" {
@@ -162,13 +162,13 @@ func (s *Server) handleEngram(w http.ResponseWriter, r *http.Request) {
 	filename := ts + "_" + actionID + ".txt"
 	path, err := viking.EngramPathWithBase(s.EngramBaseDir, filename)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "engram path: "+err.Error())
+		writeError(w, r, http.StatusInternalServerError, "engram path: "+err.Error())
 		return
 	}
 
 	content := fmt.Sprintf("# source=%s\n# action_id=%s\n\n%s", req.Source, actionID, req.Text)
 	if _, err := viking.SafeWrite(path, []byte(content), req.Classification); err != nil {
-		writeError(w, http.StatusInternalServerError, "engram write: "+err.Error())
+		writeError(w, r, http.StatusInternalServerError, "engram write: "+err.Error())
 		return
 	}
 
@@ -198,7 +198,7 @@ func (s *Server) handleLedger(w http.ResponseWriter, r *http.Request) {
 	}
 	entries, err := s.Ledger.Latest(limit)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to read ledger")
+		writeError(w, r, http.StatusInternalServerError, "failed to read ledger")
 		return
 	}
 	writeJSON(w, http.StatusOK, entries)
@@ -207,12 +207,12 @@ func (s *Server) handleLedger(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleLedgerTrace(w http.ResponseWriter, r *http.Request) {
 	actionID := r.URL.Query().Get("action_id")
 	if actionID == "" {
-		writeError(w, http.StatusBadRequest, "action_id query parameter required")
+		writeError(w, r, http.StatusBadRequest, "action_id query parameter required")
 		return
 	}
 	entries, err := s.Ledger.TraceByActionID(actionID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to trace ledger")
+		writeError(w, r, http.StatusInternalServerError, "failed to trace ledger")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -223,7 +223,7 @@ func (s *Server) handleLedgerTrace(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleToken(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		writeError(w, http.StatusMethodNotAllowed, "POST only")
+		writeError(w, r, http.StatusMethodNotAllowed, "POST only")
 		return
 	}
 	userID := "default"
@@ -237,7 +237,7 @@ func (s *Server) handleToken(w http.ResponseWriter, r *http.Request) {
 	}
 	token, err := governor.GenerateToken(userID, "user")
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "token generation failed")
+		writeError(w, r, http.StatusInternalServerError, "token generation failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"token": token, "user_id": userID})
@@ -245,7 +245,7 @@ func (s *Server) handleToken(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		writeError(w, http.StatusMethodNotAllowed, "POST only")
+		writeError(w, r, http.StatusMethodNotAllowed, "POST only")
 		return
 	}
 	body, _ := io.ReadAll(r.Body)
@@ -255,13 +255,13 @@ func (s *Server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 		Password string `json:"password"`
 	}
 	if json.Unmarshal(body, &req) != nil || req.Username == "" {
-		writeError(w, http.StatusBadRequest, "username required")
+		writeError(w, r, http.StatusBadRequest, "username required")
 		return
 	}
 	userID := req.Username
 	token, err := governor.GenerateToken(userID, "user")
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "token generation failed")
+		writeError(w, r, http.StatusInternalServerError, "token generation failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"token": token, "user_id": userID})

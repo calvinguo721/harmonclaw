@@ -20,7 +20,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	actionID := GetActionID(r.Context())
 	userID := "default"
 	if !s.Governor.Quota().Allow(userID, "chat") {
-		writeError(w, http.StatusTooManyRequests, "quota exceeded")
+		writeError(w, r, http.StatusTooManyRequests, "quota exceeded")
 		return
 	}
 	defer s.Governor.Quota().Release(userID)
@@ -57,14 +57,14 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "failed to read request body")
+		writeError(w, r, http.StatusBadRequest, "failed to read request body")
 		return
 	}
 	defer r.Body.Close()
 
 	var chatReq llm.Request
 	if err := json.Unmarshal(body, &chatReq); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		writeError(w, r, http.StatusBadRequest, "invalid JSON: "+err.Error())
 		return
 	}
 
@@ -85,7 +85,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 			ActionID:   actionID,
 		})
 		Log(r.Context(), "butler chat error: %v", err)
-		writeError(w, http.StatusBadGateway, err.Error())
+		writeError(w, r, http.StatusBadGateway, err.Error())
 		return
 	}
 
@@ -119,7 +119,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request, action
 			ActionID:   actionID,
 		})
 		Log(r.Context(), "butler chat stream error: %v", err)
-		writeError(w, http.StatusBadGateway, err.Error())
+		writeError(w, r, http.StatusBadGateway, err.Error())
 		return
 	}
 
@@ -164,14 +164,14 @@ func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
 	actionID := GetActionID(r.Context())
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "failed to read request body")
+		writeError(w, r, http.StatusBadRequest, "failed to read request body")
 		return
 	}
 	defer r.Body.Close()
 
 	var req skillRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		writeError(w, r, http.StatusBadRequest, "invalid JSON: "+err.Error())
 		return
 	}
 
@@ -180,13 +180,13 @@ func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
 		skillID = req.SkillName
 	}
 	if skillID == "" {
-		writeError(w, http.StatusBadRequest, "skill_id or skill_name required")
+		writeError(w, r, http.StatusBadRequest, "skill_id or skill_name required")
 		return
 	}
 
 	userID := "default"
 	if !s.Governor.Quota().Allow(userID, skillID) {
-		writeError(w, http.StatusTooManyRequests, "quota exceeded")
+		writeError(w, r, http.StatusTooManyRequests, "quota exceeded")
 		return
 	}
 	defer s.Governor.Quota().Release(userID)
@@ -230,7 +230,7 @@ func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
 	}
 	allowEmpty := skillID == "doc_perceiver" && req.Args != nil && (req.Args["path"] != "" || req.Args["file"] != "" || req.Args["dir"] != "")
 	if text == "" && !allowEmpty {
-		writeError(w, http.StatusBadRequest, "input text is empty")
+		writeError(w, r, http.StatusBadRequest, "input text is empty")
 		return
 	}
 
@@ -253,7 +253,7 @@ func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
 	output, err := s.Architect.ExecuteSkill(skillID, input)
 	if err != nil {
 		if err == architect.ErrBackpressure {
-			writeError(w, http.StatusServiceUnavailable, "skill execution backlogged")
+			writeError(w, r, http.StatusServiceUnavailable, "skill execution backlogged")
 			return
 		}
 		s.Ledger.Record(viking.LedgerEntry{
