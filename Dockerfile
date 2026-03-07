@@ -1,7 +1,7 @@
 # Stage 1: build
 FROM golang:1.22-alpine AS builder
 WORKDIR /app
-COPY go.mod go.sum ./
+COPY go.mod ./
 RUN go mod download 2>/dev/null || true
 COPY . .
 RUN CGO_ENABLED=0 go build -o /harmonclaw ./cmd/harmonclaw/
