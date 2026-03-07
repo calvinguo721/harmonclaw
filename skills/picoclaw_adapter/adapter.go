@@ -9,85 +9,82 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"harmonclaw/governor"
 	"harmonclaw/skills"
 )
 
-const (
-	picoTimeout   = 5 * time.Second
-	picoMaxBytes  = 1024
-)
-
 func init() {
 	skills.Register(&Adapter{})
 }
 
+const (
+	defaultEndpoint = "http://localhost:9003"
+	picoTimeout     = 5 * time.Second
+	picoMaxBytes    = 1024
+)
+
 type Adapter struct{}
 
 func (a *Adapter) GetIdentity() skills.SkillIdentity {
-	return skills.SkillIdentity{ID: "picoclaw_proxy", Version: "0.1.0", Core: "architect"}
+	return skills.SkillIdentity{ID: "picoclaw_proxy", Version: "0.2.0", Core: "architect"}
 }
 
 func (a *Adapter) Execute(input skills.SkillInput) skills.SkillOutput {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), picoTimeout)
+	defer cancel()
 	return skills.RunSandboxedWithTimeout(ctx, input.TraceID, picoTimeout, func() skills.SkillOutput {
 		return a.doExecute(input)
 	})
 }
 
-func truncate(s string, max int) string {
-	if len(s) <= max {
-		return s
-	}
-	return s[:max]
-}
-
 func (a *Adapter) doExecute(input skills.SkillInput) skills.SkillOutput {
 	start := time.Now()
-	text := truncate(input.Text, picoMaxBytes)
-
-	apiURL := os.Getenv("PICOCLAW_API_URL")
+	apiURL := strings.TrimSpace(os.Getenv("HC_PICOCLAW_ENDPOINT"))
 	if apiURL == "" {
-		apiURL = "http://localhost:9003/invoke"
+		apiURL = defaultEndpoint
 	}
 
-	body, _ := json.Marshal(map[string]any{
-		"query": text,
-		"args":  input.Args,
-		"trace": input.TraceID,
-	})
+	text := input.Text
+	if len(text) > picoMaxBytes {
+		text = text[:picoMaxBytes]
+	}
+	body, _ := json.Marshal(map[string]any{"query": text, "args": input.Args, "trace": input.TraceID})
 	if len(body) > picoMaxBytes {
 		body = body[:picoMaxBytes]
 	}
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, apiURL, bytes.NewReader(body))
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, apiURL+"/invoke", bytes.NewReader(body))
 	if err != nil {
-		return skills.SkillOutput{TraceID: input.TraceID, Status: "error", Error: err.Error()}
+		return a.degraded(input.TraceID, err.Error(), start)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	client := governor.SecureClient()
-	resp, err := client.Do(req)
+	resp, err := governor.SecureClient().Do(req)
 	if err != nil {
-		return skills.SkillOutput{TraceID: input.TraceID, Status: "error", Error: err.Error()}
+		return a.degraded(input.TraceID, err.Error(), start)
 	}
 	defer resp.Body.Close()
 
 	data, err := io.ReadAll(io.LimitReader(resp.Body, picoMaxBytes))
 	if err != nil {
-		return skills.SkillOutput{TraceID: input.TraceID, Status: "error", Error: err.Error()}
+		return a.degraded(input.TraceID, err.Error(), start)
 	}
-
 	if resp.StatusCode != http.StatusOK {
-		return skills.SkillOutput{TraceID: input.TraceID, Status: "error", Error: fmt.Sprintf("upstream %d: %s", resp.StatusCode, data)}
+		return a.degraded(input.TraceID, fmt.Sprintf("upstream %d", resp.StatusCode), start)
 	}
 
-	out := skills.SkillOutput{
-		TraceID: input.TraceID,
-		Status:  "ok",
-		Data:    data,
-	}
+	out := skills.SkillOutput{TraceID: input.TraceID, Status: "ok", Data: data}
+	out.Metrics.Ms = time.Since(start).Milliseconds()
+	out.Metrics.Bytes = len(data)
+	return out
+}
+
+func (a *Adapter) degraded(traceID, reason string, start time.Time) skills.SkillOutput {
+	data, _ := json.Marshal(map[string]any{"degraded": true, "reason": reason, "message": "PicoClaw unavailable"})
+	out := skills.SkillOutput{TraceID: traceID, Status: "ok", Data: data}
 	out.Metrics.Ms = time.Since(start).Milliseconds()
 	out.Metrics.Bytes = len(data)
 	return out

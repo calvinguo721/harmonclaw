@@ -1,0 +1,37 @@
+package picoclaw_adapter
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"testing"
+
+	"harmonclaw/skills"
+)
+
+func TestAdapter_Execute_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"ok":true}`))
+	}))
+	defer srv.Close()
+
+	os.Setenv("HC_PICOCLAW_ENDPOINT", srv.URL)
+	defer os.Unsetenv("HC_PICOCLAW_ENDPOINT")
+
+	a := &Adapter{}
+	out := a.Execute(skills.SkillInput{TraceID: "t1", Text: "hi"})
+	if out.Status != "ok" {
+		t.Fatalf("want ok, got %s", out.Status)
+	}
+}
+
+func TestAdapter_Execute_Degraded(t *testing.T) {
+	os.Setenv("HC_PICOCLAW_ENDPOINT", "http://127.0.0.1:19996")
+	defer os.Unsetenv("HC_PICOCLAW_ENDPOINT")
+
+	a := &Adapter{}
+	out := a.Execute(skills.SkillInput{TraceID: "t2", Text: "hi"})
+	if out.Status != "ok" {
+		t.Fatalf("want ok (graceful), got %s", out.Status)
+	}
+}
