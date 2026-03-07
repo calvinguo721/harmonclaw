@@ -1,6 +1,10 @@
-# HarmonClaw v0.2
+# HarmonClaw v1.0
 
 主权 AI 运行时，面向 RISC-V + OpenHarmony 设备。纯 Go 标准库，零第三方依赖，支持 CGO_ENABLED=0 交叉编译。
+
+- **控制台**: http://localhost:8080
+- **首页**: http://localhost:8080/landing
+- **API 文档**: http://localhost:8080/api-docs
 
 ## 架构
 
@@ -74,14 +78,16 @@ go run ./cmd/harmonclaw/
 
 | 文件 | 说明 |
 |------|------|
-| configs/config.json | 主配置（version、port、data_dir 等） |
-| configs/policies.json | IronClaw 策略（skill 权限） |
-| configs/allowed-boards.json | 硬件白名单（Orange Pi RV2/3B 等） |
-| configs/skill-quotas.json | 技能超时与内存配额 |
-| configs/crons.json | 定时任务 |
-| configs/persona.json | Butler 人格配置 |
+| configs/config.json | 主配置 |
+| configs/governor.json | 防火墙（path blocklist、body limit） |
+| configs/audit.json | 审计（retention、max_entries） |
+| configs/ironclaw_rules.json | 路径级安全矩阵 |
+| configs/security.json | CORS、CSP |
+| configs/policies.json | IronClaw 策略 |
+| configs/llm.json | LLM 路由 |
+| configs/tts.json | TTS 配置 |
 
-环境变量：`HC_PORT`、`HC_DATA_DIR`、`HC_LOG_LEVEL`、`DEEPSEEK_API_KEY`、`HC_AUTH_ENABLED`、`HC_JWT_SECRET`、`HC_SOVEREIGNTY_MODE`、`HC_CONFIG`
+环境变量：`HC_PORT`、`HC_DATA_DIR`、`HC_TLS_CERT`、`HC_TLS_KEY`、`DEEPSEEK_API_KEY`、`HC_SEARCH_API`、`HC_SEARCH_SEARXNG`、`HC_TTS_ENDPOINT`
 
 ## 铁律概要（.cursorrules）
 
@@ -94,12 +100,25 @@ go run ./cmd/harmonclaw/
 
 完整 15 条见 `.cursorrules`。
 
-## 构建
+## 构建与安装
 
 ```bash
 make build      # 本地
 make build-rv   # RISC-V 交叉编译
-make clean     # 清理
+make clean      # 清理
+./scripts/install.sh sign .  # 从源码构建并安装
+./scripts/checksum.sh sign harmonclaw   # 生成 SHA256
+./scripts/checksum.sh verify harmonclaw # 校验
+```
+
+## CLI (hc)
+
+```bash
+go build ./cmd/hc/
+hc health
+hc skills
+hc chat "你好"
+hc ledger 10
 ```
 
 ## 许可证

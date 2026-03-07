@@ -2,6 +2,7 @@
 package gateway
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"expvar"
@@ -10,6 +11,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"harmonclaw/architect"
@@ -103,6 +105,13 @@ func (s *Server) routes() {
 		s.Mux.HandleFunc("POST /v1/edge/command", edge.HandleCommand(s.EdgeTunnel))
 	}
 	s.Mux.Handle("GET /debug/vars", expvar.Handler())
+	s.Mux.HandleFunc("GET /landing", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "web/landing.html")
+	})
+	s.Mux.HandleFunc("GET /api-docs", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+		http.ServeFile(w, r, "docs/api.md")
+	})
 
 	s.Mux.Handle("GET /static/", http.StripPrefix("/static", http.FileServer(http.Dir("web"))))
 	s.Mux.Handle("GET /", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -122,9 +131,16 @@ func (s *Server) ListenAndServe() error {
 }
 
 func (s *Server) ListenAndServeTLS(certFile, keyFile string) error {
-	h := Chain(s.Mux, s.Ledger, s.Firewall, s.RateLimiter, authEnabled())
-	h = CORS(h)
-	h = securityHeaders(h)
+	fullChain := Chain(s.Mux, s.Ledger, s.Firewall, s.RateLimiter, authEnabled())
+	minimalChain := MinimalChain(s.Ledger, s.Mux)
+	router := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isFastPath(r.URL.Path) {
+			minimalChain.ServeHTTP(w, r)
+		} else {
+			fullChain.ServeHTTP(w, r)
+		}
+	})
+	h := CORS(securityHeaders(router))
 	s.httpServer = &http.Server{Addr: s.Addr, Handler: h}
 	if certFile != "" && keyFile != "" {
 		return s.httpServer.ListenAndServeTLS(certFile, keyFile)
@@ -220,10 +236,21 @@ func sovereigntyWall(next http.Handler) http.Handler {
 
 // --- helpers ---
 
+var bufferPool = sync.Pool{
+	New: func() any { return new(bytes.Buffer) },
+}
+
 func writeJSON(w http.ResponseWriter, status int, v any) {
+	buf := bufferPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	defer func() { buf.Reset(); bufferPool.Put(buf) }()
+	if err := json.NewEncoder(buf).Encode(v); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(v)
+	w.Write(buf.Bytes())
 }
 
 func writeError(w http.ResponseWriter, r *http.Request, status int, msg string) {

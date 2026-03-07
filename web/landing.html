@@ -3,14 +3,18 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="HarmonClaw - 主权 AI 运行时，面向 RISC-V + OpenHarmony">
 <title>HarmonClaw - 主权 AI 运行时</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:"Segoe UI","Noto Sans SC",sans-serif;background:#0a0a0c;color:#e0e0e8;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2rem}
-h1{font-size:2rem;margin-bottom:.5rem;background:linear-gradient(90deg,#3dc46a,#3d7fc4);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
-.tagline{color:#8888a0;font-size:1rem;margin-bottom:2rem}
-.cta{display:flex;gap:1rem;flex-wrap:wrap;justify-content:center}
-.cta a{padding:.6rem 1.2rem;border-radius:8px;text-decoration:none;font-weight:600;transition:opacity .2s}
+body{font-family:"Segoe UI","Noto Sans SC",sans-serif;background:#0a0a0c;color:#e0e0e8;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2rem;line-height:1.6}
+h1{font-size:2.5rem;margin-bottom:.5rem;background:linear-gradient(90deg,#3dc46a,#3d7fc4);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.tagline{color:#8888a0;font-size:1.1rem;margin-bottom:1rem;text-align:center}
+.features{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;margin:2rem 0;max-width:600px}
+.feature{padding:1rem;background:#121218;border-radius:8px;border:1px solid #2a2a35;text-align:center}
+.feature strong{color:#3dc46a;display:block;margin-bottom:.3rem}
+.cta{display:flex;gap:1rem;flex-wrap:wrap;justify-content:center;margin:2rem 0}
+.cta a{padding:.7rem 1.4rem;border-radius:8px;text-decoration:none;font-weight:600;transition:opacity .2s}
 .cta .primary{background:#3dc46a;color:#0a0a0c}
 .cta .secondary{background:transparent;border:1px solid #2a2a35;color:#e0e0e8}
 .cta a:hover{opacity:.9}
@@ -20,10 +24,17 @@ h1{font-size:2rem;margin-bottom:.5rem;background:linear-gradient(90deg,#3dc46a,#
 <body>
 <h1>HarmonClaw</h1>
 <p class="tagline">主权 AI 运行时 · RISC-V + OpenHarmony · 纯 Go 标准库</p>
+<div class="features">
+  <div class="feature"><strong>Governor</strong> 主权 · 审计 · 限流</div>
+  <div class="feature"><strong>Butler</strong> 对话 · SSE · TTS</div>
+  <div class="feature"><strong>Architect</strong> 技能 · 管道 · 调度</div>
+  <div class="feature"><strong>Viking</strong> 记忆 · 检索 · 快照</div>
+</div>
 <div class="cta">
   <a class="primary" href="/">控制台</a>
+  <a class="secondary" href="/static/health.html">健康检查</a>
   <a class="secondary" href="https://github.com/harmonclaw/harmonclaw">GitHub</a>
 </div>
-<p class="footer">Governor · Butler · Architect · Viking</p>
+<p class="footer">harmonclaw.com · Governor · Butler · Architect · Viking</p>
 </body>
 </html>

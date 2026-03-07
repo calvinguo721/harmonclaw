@@ -12,6 +12,18 @@ import (
 	"harmonclaw/viking"
 )
 
+// isFastPath returns true for paths that skip heavy middleware (health, static, landing, api-docs, debug).
+func isFastPath(path string) bool {
+	return path == "/" || path == "" || path == "/v1/health" ||
+		strings.HasPrefix(path, "/static/") || path == "/landing" || path == "/api-docs" ||
+		strings.HasPrefix(path, "/debug/")
+}
+
+// MinimalChain returns recover→mux for fast-path requests.
+func MinimalChain(ledger viking.Ledger, mux http.Handler) http.Handler {
+	return recoverMiddleware(ledger, mux)
+}
+
 // Chain builds: recover→firewall→ratelimit→auth→action_id→ironclaw→metrics→logger→handler→ledger
 func Chain(mux http.Handler, ledger viking.Ledger, firewall *governor.Firewall, rateLimiter *governor.TripleRateLimiter, authEnabled bool) http.Handler {
 	h := mux

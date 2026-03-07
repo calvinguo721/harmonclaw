@@ -10,8 +10,14 @@
 | v1.1 | TASK 71-75 Governor 安全/审计/IronClaw/HTTPS/CORS | ✅ |
 | v1.2 | TASK 76-79 前端对话/Governor/Architect/导航 | ✅ |
 | v1.3 | TASK 80-82 安装脚本/签名/首页 | ✅ |
+| v1.4 | TASK 83-85 API 文档/SDK/CLI 完善 | ✅ |
 | v1.4 | TASK 86 压力测试 | ✅ |
+| v1.5 | TASK 87-90 安全/端到端/基准/模糊测试 | ✅ |
+| v1.5 | TASK 91-93 内存/启动/请求管道优化 | ✅ |
 | v1.6 | TASK 94 CHANGELOG | ✅ |
+| v1.6 | TASK 95-98 README/代码清理/.cursorrules/ironclaw_rules | ✅ |
+| v1.6 | TASK 99 git push + tag | 待本地执行 |
+| v1.6 | TASK 100 最终验收报告 | ✅ |
 
 ## 验证项
 
@@ -29,3 +35,8 @@
 - IronClaw: 路径级策略矩阵
 - TLS、CORS、CSP 安全头
 - 前端: 对话空状态、加载动画、Governor 刷新、导航快捷
+- API 文档: /api-docs、/landing 静态页
+- SDK: SetTimeout、SetToken、ExecuteSkill、Sovereign、LedgerLatest
+- CLI (hc): health、skills、chat、ledger、req
+- 测试: 安全测试、E2E、基准、模糊
+- 优化: sync.Pool 缓冲池、并行启动 SHA、fast-path 请求管道

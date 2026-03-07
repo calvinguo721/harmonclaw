@@ -1,7 +1,7 @@
-## HarmonClaw v0.2 架构与统计
+## HarmonClaw v1.0 架构与统计
 
-- **规模**: 68 文件、7316 行
-- **API**: 21 端点
+- **规模**: 198 文件、15769 行 Go
+- **API**: 25+ 端点（含 /landing、/api-docs）
 - **四大核心**: Governor / Butler / Architect / Viking
 - **中间件链**: recover → firewall → ratelimit → auth → action_id → ironclaw → handler → ledger
 

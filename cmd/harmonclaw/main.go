@@ -14,6 +14,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -68,19 +69,29 @@ func main() {
 	}
 
 	// --- boot banner (IRON RULE #8) ---
-	rulesSHA := ""
-	if data, err := os.ReadFile(".cursorrules"); err == nil {
-		h := sha256.Sum256(data)
-		rulesSHA = hex.EncodeToString(h[:])
-	} else {
-		rulesSHA = "unavailable"
-	}
-	configSHA := ""
-	if data, err := os.ReadFile(configPath); err == nil {
-		h := sha256.Sum256(data)
-		configSHA = hex.EncodeToString(h[:])
-	} else {
-		configSHA = "unavailable"
+	var rulesSHA, configSHA string
+	{
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			if data, err := os.ReadFile(".cursorrules"); err == nil {
+				h := sha256.Sum256(data)
+				rulesSHA = hex.EncodeToString(h[:])
+			} else {
+				rulesSHA = "unavailable"
+			}
+		}()
+		go func() {
+			defer wg.Done()
+			if data, err := os.ReadFile(configPath); err == nil {
+				h := sha256.Sum256(data)
+				configSHA = hex.EncodeToString(h[:])
+			} else {
+				configSHA = "unavailable"
+			}
+		}()
+		wg.Wait()
 	}
 	skillList := make([]string, 0, len(skills.Registry))
 	for id := range skills.Registry {
