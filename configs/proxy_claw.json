@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "mimicclaw": {"timeout_sec": 30, "max_retries": 2, "max_concurrent": 2},
+  "nanoclaw": {"timeout_sec": 30, "max_retries": 2, "max_concurrent": 2},
+  "picoclaw": {"timeout_sec": 5, "max_retries": 1, "max_concurrent": 1, "max_bytes": 1024}
+}

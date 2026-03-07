@@ -1,6 +1,7 @@
 package nanoclaw_adapter
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -22,6 +23,26 @@ func TestAdapter_Execute_Success(t *testing.T) {
 	out := a.Execute(skills.SkillInput{TraceID: "t1", Text: "hi"})
 	if out.Status != "ok" {
 		t.Fatalf("want ok, got %s", out.Status)
+	}
+}
+
+func TestAdapter_ShadowSovereignty(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"result":"ok"}`))
+	}))
+	defer srv.Close()
+	os.Setenv("HC_NANOCLAW_ENDPOINT", srv.URL)
+	defer os.Unsetenv("HC_NANOCLAW_ENDPOINT")
+
+	a := &Adapter{}
+	out := a.Execute(skills.SkillInput{TraceID: "s1", Text: "x", Args: map[string]string{"sovereignty": "shadow"}})
+	if out.Status != "ok" {
+		t.Fatalf("want ok, got %s", out.Status)
+	}
+	var d map[string]any
+	json.Unmarshal(out.Data, &d)
+	if d["degraded"] != true || d["reason"] != "offline mode" {
+		t.Errorf("want degraded offline, got %v", d)
 	}
 }
 
