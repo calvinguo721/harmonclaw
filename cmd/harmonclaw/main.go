@@ -209,6 +209,10 @@ func main() {
 	gc := viking.NewGC(kvStore, snapMgr, filepath.Join(cfg.VikingBaseDir(), "engrams"), ledger)
 	gc.Start()
 
+	// --- config watcher (hot-reload) ---
+	watcher := configs.NewWatcher("configs")
+	go watcher.Start()
+
 	// --- gateway ---
 	addr := ":" + cfg.Port
 	srv := gateway.NewWithEngramDir(addr, gov, b, a, ledger, policies, version, cfg.VikingBaseDir())
