@@ -190,6 +190,7 @@ input,textarea{border:none;outline:none;background:none;color:inherit;font:inher
       <div class="tab-sw">
         <button class="tab-btn active" data-tab="arch">Architect</button>
         <button class="tab-btn" data-tab="viking">Viking</button>
+        <button class="tab-btn" data-tab="devices">Devices</button>
       </div>
     </div>
     <div class="arch-body" id="archPanel">
@@ -215,6 +216,15 @@ input,textarea{border:none;outline:none;background:none;color:inherit;font:inher
       <div id="vikingSnapshots" class="viking-snapshots" style="font-size:.65rem;max-height:60px;overflow-y:auto"></div>
       <div class="arch-section">GC 状态</div>
       <div id="vikingGC" style="font-size:.6rem;color:var(--txt3)">—</div>
+    </div>
+    <div class="viking-panel" id="devicesPanel" style="display:none">
+      <div class="arch-section">边缘设备 (5s 刷新)</div>
+      <div id="edgeDevicesList" style="font-size:.65rem;max-height:200px;overflow-y:auto"></div>
+      <div class="arch-section">下发命令</div>
+      <select id="edgeDeviceSelect" style="width:100%;padding:.3rem;font-size:.65rem;margin-bottom:.2rem"><option value="">选择设备</option></select>
+      <select id="edgeCommandSelect" style="width:100%;padding:.3rem;font-size:.65rem;margin-bottom:.2rem"><option value="set_mode">主权模式切换</option></select>
+      <input id="edgeCommandPayload" placeholder='{"mode":"shadow"}' style="width:100%;padding:.3rem;font-size:.65rem;margin-bottom:.2rem">
+      <button class="btn-ex" id="edgeCommandBtn">下发</button>
     </div>
   </aside>
 </div>
@@ -329,7 +339,27 @@ $$('.tab-btn').forEach(b=>b.addEventListener('click',()=>{
   if(ap){ap.style.display=t==='arch'?'block':'none'}
   if(ab){ab.style.display=t==='arch'?'flex':'none'}
   if(vp){vp.style.display=t==='viking'?'block':'none';if(t==='viking')refreshVikingSnapshots()}
+  const dp=$('#devicesPanel');if(dp){dp.style.display=t==='devices'?'block':'none';if(t==='devices')refreshEdgeDevices()}
 }));
+async function refreshEdgeDevices(){
+  try{const r=await fetch('/v1/edge/devices',{headers:authHeaders()});
+  const d=await r.json();const el=$('#edgeDevicesList');const sel=$('#edgeDeviceSelect');if(!el)return;
+  el.innerHTML='';sel.innerHTML='<option value="">选择设备</option>';
+  (Array.isArray(d)?d:[]).forEach(dev=>{
+    const div=document.createElement('div');div.className='le';div.setAttribute('data-s',dev.status==='online'?'ok':'fail');
+    div.innerHTML='<span>'+esc(dev.id)+' | '+esc(dev.arch)+'/'+esc(dev.os)+' | '+esc(dev.status)+' | '+esc(dev.last_seen||'')+'</span>';
+    el.appendChild(div);
+    const o=document.createElement('option');o.value=dev.id;o.textContent=dev.id;sel.appendChild(o);
+  });
+  if($('#devicesPanel')?.style?.display==='block')setTimeout(refreshEdgeDevices,5000)}catch(_){}
+}
+$('#edgeCommandBtn')?.addEventListener('click',async()=>{
+  const dev=$('#edgeDeviceSelect')?.value,cmd=$('#edgeCommandSelect')?.value,pl=$('#edgeCommandPayload')?.value;
+  if(!dev||!cmd){alert('选择设备');return}
+  let payload={};try{payload=JSON.parse(pl||'{}')}catch(e){alert('Invalid JSON')}
+  try{const r=await fetch('/v1/edge/command',{method:'POST',headers:authHeaders(),body:JSON.stringify({device_id:dev,command:cmd,payload})});
+  if(r.ok)alert('已下发');else{alert((await r.json()).error||'Failed')}}catch(e){alert(e.message)}
+});
 async function refreshVikingSnapshots(){
   try{const r=await fetch('/v1/viking/snapshots',{headers:authHeaders()});
   const d=await r.json();const el=$('#vikingSnapshots');if(!el)return;el.innerHTML='';
