@@ -1,4 +1,4 @@
-// Package tts provides TTS synthesis via API or text+phoneme fallback.
+// Package tts provides TTS synthesis via API (incl. Edge TTS proxy) or text+phoneme fallback.
 package tts
 
 import (
@@ -9,7 +9,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -25,14 +27,49 @@ func init() {
 const (
 	defaultVoice   = "zh-CN-XiaoyiNeural"
 	defaultTimeout = 60 * time.Second
+	maxTextLen     = 5000
 )
 
 var sentenceSplitRe = regexp.MustCompile(`[。！？.!?]\s*|\n+`)
 
+type ttsConfig struct {
+	DefaultVoice   string `json:"default_voice"`
+	CacheTTLSec    int    `json:"cache_ttl_sec"`
+	MaxConcurrent  int    `json:"max_concurrent"`
+	MaxTextLen     int    `json:"max_text_len"`
+	EdgeMode       bool   `json:"edge_mode"`
+}
+
+func loadTTSConfig() ttsConfig {
+	cfg := ttsConfig{
+		DefaultVoice:  defaultVoice,
+		CacheTTLSec:   3600,
+		MaxConcurrent: 2,
+		MaxTextLen:    maxTextLen,
+		EdgeMode:      false,
+	}
+	paths := []string{"configs/tts.json"}
+	if wd, _ := os.Getwd(); wd != "" {
+		paths = append(paths, filepath.Join(wd, "configs/tts.json"))
+	}
+	for _, p := range paths {
+		data, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		json.Unmarshal(data, &cfg)
+		if cfg.MaxTextLen <= 0 {
+			cfg.MaxTextLen = maxTextLen
+		}
+		break
+	}
+	return cfg
+}
+
 type TTS struct{}
 
 func (t *TTS) GetIdentity() skills.SkillIdentity {
-	return skills.SkillIdentity{ID: "tts", Version: "0.2.0", Core: "architect"}
+	return skills.SkillIdentity{ID: "tts", Version: "0.3.0", Core: "architect"}
 }
 
 func (t *TTS) Execute(input skills.SkillInput) skills.SkillOutput {
@@ -53,25 +90,60 @@ func (t *TTS) doExecute(input skills.SkillInput) skills.SkillOutput {
 		return skills.SkillOutput{TraceID: input.TraceID, Status: "error", Error: "text is empty"}
 	}
 
-	voice := defaultVoice
+	cfg := loadTTSConfig()
+	if len([]rune(text)) > cfg.MaxTextLen {
+		return skills.SkillOutput{TraceID: input.TraceID, Status: "error", Error: "text exceeds max length"}
+	}
+
+	voice := cfg.DefaultVoice
 	if input.Args != nil && input.Args["voice"] != "" {
 		voice = input.Args["voice"]
 	}
 
 	endpoint := strings.TrimSpace(os.Getenv("HC_TTS_ENDPOINT"))
 	if endpoint != "" {
-		return t.synthesizeViaAPI(input, text, voice, endpoint, start)
+		cacheKey := ttsCacheKey(text, voice)
+		if cached, ok := ttsCacheGet(cacheKey); ok {
+			out := skills.SkillOutput{TraceID: input.TraceID, Status: "ok", Data: cached}
+			out.Metrics.Ms = time.Since(start).Milliseconds()
+			out.Metrics.Bytes = len(cached)
+			return out
+		}
+		if !ttsAcquire() {
+			return skills.SkillOutput{TraceID: input.TraceID, Status: "error", Error: "tts concurrency limit exceeded"}
+		}
+		defer ttsRelease()
+
+		out := t.synthesizeViaAPI(input, text, voice, endpoint, cfg.EdgeMode, start)
+		if out.Status == "ok" && len(out.Data) > 0 {
+			ttsCacheSet(cacheKey, out.Data)
+		}
+		return out
 	}
 	return t.fallbackTextPhoneme(input, text, start)
 }
 
-func (t *TTS) synthesizeViaAPI(input skills.SkillInput, text, voice, endpoint string, start time.Time) skills.SkillOutput {
-	body, _ := json.Marshal(map[string]string{"text": text, "voice": voice})
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, endpoint, bytes.NewReader(body))
+func (t *TTS) synthesizeViaAPI(input skills.SkillInput, text, voice, endpoint string, edgeMode bool, start time.Time) skills.SkillOutput {
+	var req *http.Request
+	var err error
+	if edgeMode || os.Getenv("HC_TTS_EDGE_MODE") == "1" {
+		form := url.Values{}
+		form.Set("text", text)
+		form.Set("voice", voice)
+		req, err = http.NewRequestWithContext(context.Background(), http.MethodPost, endpoint, strings.NewReader(form.Encode()))
+		if err == nil {
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		}
+	} else {
+		body, _ := json.Marshal(map[string]string{"text": text, "voice": voice})
+		req, err = http.NewRequestWithContext(context.Background(), http.MethodPost, endpoint, bytes.NewReader(body))
+		if err == nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+	}
 	if err != nil {
 		return skills.SkillOutput{TraceID: input.TraceID, Status: "error", Error: err.Error()}
 	}
-	req.Header.Set("Content-Type", "application/json")
 
 	client := governor.SecureClient()
 	resp, err := client.Do(req)

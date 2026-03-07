@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "default_voice": "zh-CN-XiaoyiNeural",
+  "cache_ttl_sec": 3600,
+  "max_concurrent": 2,
+  "max_text_len": 5000,
+  "edge_mode": false
+}
