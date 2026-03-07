@@ -3,6 +3,14 @@
 ## [v1.0] - 2026-03
 
 ### Added
+- API docs: GET /api-docs, GET /landing (Markdown/HTML)
+- SDK: SetTimeout, SetToken, ExecuteSkill, Sovereign, LedgerLatest
+- CLI (hc): ledger [limit], chat \<message\>, req with POST/body
+- Security tests: path traversal, suspicious header, shadow mode
+- E2E test: health → chat → skill flow
+- Benchmark: Firewall.Wrap, Ledger.Record
+- Fuzz: Firewall path, FirewallConfig path traversal
+- ironclaw_rules.json: expanded path_rules, blocked_paths (/.env, /.git/)
 - Intent recognition engine (configs/intents.json)
 - Session context manager with sliding window + Viking memory injection
 - Response pipeline: intent → context → LLM/skill → post-process → memory
@@ -29,6 +37,9 @@
 - Landing page (web/landing.html)
 
 ### Changed
+- writeJSON: sync.Pool for bytes.Buffer (reduce GC pressure)
+- Startup: parallel SHA256 for config + .cursorrules
+- Request pipeline: fast-path for /v1/health, /, /static/, /landing, /api-docs, /debug/
 - Firewall uses FirewallConfig from configs/governor.json
 - LedgerEntry: optional Severity, UserID, ExtraDetails
 - Gateway: ListenAndServeTLS for TLS support
