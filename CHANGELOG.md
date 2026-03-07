@@ -1,5 +1,38 @@
 # Changelog
 
+## [v1.0] - 2026-03
+
+### Added
+- Intent recognition engine (configs/intents.json)
+- Session context manager with sliding window + Viking memory injection
+- Response pipeline: intent → context → LLM/skill → post-process → memory
+- Skill router: TF-IDF matching, chaining, fallback
+- Memory engine: short/long-term, extraction, decay, Jaccard merge
+- Viking BM25 hybrid search, Chinese segmentation, Porter stemmer
+- Viking Engram format (data/viking/engrams/)
+- LLM router: DeepSeek/OpenAI/Ollama, sovereignty-aware
+- doc_perceiver: HTML/CSV, keyword extraction, 1MB limit
+- web_search: SearXNG, cache, concurrency limit
+- tts: config, cache, Edge TTS proxy mode
+- openclaw_proxy: retry backoff, concurrency, shadow
+- mimicclaw/nanoclaw/picoclaw: config, retry, shadow
+- Governor firewall: path blocklist, suspicious headers, config
+- Audit: severity, retention, max_entries
+- IronClaw path rules (configs/ironclaw_rules.json)
+- HTTPS/TLS (HC_TLS_CERT, HC_TLS_KEY)
+- CORS/CSP (configs/security.json)
+- Chat: empty state, loading indicator
+- Governor panel: refresh button
+- Nav: smooth scroll, Viking tab shortcut
+- Install script (scripts/install.sh)
+- Checksum script (scripts/checksum.sh)
+- Landing page (web/landing.html)
+
+### Changed
+- Firewall uses FirewallConfig from configs/governor.json
+- LedgerEntry: optional Severity, UserID, ExtraDetails
+- Gateway: ListenAndServeTLS for TLS support
+
 ## [v0.7] - 2026-03
 
 ### Added
