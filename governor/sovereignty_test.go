@@ -26,4 +26,29 @@ func TestSovereigntyMachine_TripleCheck(t *testing.T) {
 	if !m.TripleCheck("api.example.com", "443", "https") {
 		t.Error("airlock should allow whitelisted")
 	}
+	m.Switch(ModeOpenSea, []string{"*"})
+	if !m.TripleCheck("any.com", "443", "https") {
+		t.Error("opensea with * should allow all")
+	}
+}
+
+func TestGeoIPCheck(t *testing.T) {
+	if !GeoIPCheck("127.0.0.1") {
+		t.Error("loopback should be domestic")
+	}
+	if !GeoIPCheck("10.0.0.1") {
+		t.Error("private should be domestic")
+	}
+	if GeoIPCheck("8.8.8.8") {
+		t.Error("public should not be domestic by default")
+	}
+}
+
+func TestAllowedBoardsCheck(t *testing.T) {
+	if !AllowedBoardsCheck("riscv64") {
+		t.Error("riscv64 should be in allowed-boards.json")
+	}
+	if !AllowedBoardsCheck("arm64") {
+		t.Error("arm64 should be in allowed-boards.json")
+	}
 }
