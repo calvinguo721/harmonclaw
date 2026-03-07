@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"harmonclaw/governor"
+	"harmonclaw/governor/ironclaw"
 	"harmonclaw/viking"
 )
 
@@ -51,6 +52,12 @@ func rateLimitMiddleware(rl *governor.TripleRateLimiter, next http.Handler) http
 	})
 }
 
+var ironclawRules ironclaw.RulesMatrix
+
+func init() {
+	ironclawRules = ironclaw.LoadRulesMatrix("")
+}
+
 func ironclawMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if SovereigntyMode == "shadow" && strings.HasPrefix(r.URL.Path, "/v1/") {
@@ -59,6 +66,15 @@ func ironclawMiddleware(next http.Handler) http.Handler {
 			w.WriteHeader(http.StatusForbidden)
 			w.Write([]byte(`{"error":"SOVEREIGNTY: shadow mode"}`))
 			return
+		}
+		if strings.HasPrefix(r.URL.Path, "/v1/") || strings.HasPrefix(r.URL.Path, "/admin") || strings.HasPrefix(r.URL.Path, "/debug/") {
+			if err := ironclawRules.CheckPath(r.URL.Path, r.Method); err != nil {
+				Log(r.Context(), "IRONCLAW block: %s %s: %v", r.Method, r.URL.Path, err)
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusForbidden)
+				w.Write([]byte(`{"error":"` + err.Error() + `"}`))
+				return
+			}
 		}
 		next.ServeHTTP(w, r)
 	})

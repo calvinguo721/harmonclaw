@@ -6,20 +6,52 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"harmonclaw/viking"
 )
 
+// AuditConfig holds audit settings.
+type AuditConfig struct {
+	RetentionDays    int      `json:"retention_days"`
+	MaxEntriesPerQuery int    `json:"max_entries_per_query"`
+	ExportFormats    []string `json:"export_formats"`
+}
+
+// LoadAuditConfig loads from configs/audit.json.
+func LoadAuditConfig() AuditConfig {
+	cfg := AuditConfig{RetentionDays: 90, MaxEntriesPerQuery: 1000, ExportFormats: []string{"jsonl", "csv"}}
+	paths := []string{"configs/audit.json"}
+	if wd, _ := os.Getwd(); wd != "" {
+		paths = append(paths, filepath.Join(wd, "configs/audit.json"))
+	}
+	for _, p := range paths {
+		data, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		json.Unmarshal(data, &cfg)
+		if cfg.MaxEntriesPerQuery <= 0 {
+			cfg.MaxEntriesPerQuery = 1000
+		}
+		break
+	}
+	return cfg
+}
+
 // AuditEngine provides query and export for ledger entries.
 type AuditEngine struct {
 	ledger viking.QueryableLedger
+	cfg    AuditConfig
 }
 
 // NewAuditEngine creates an audit engine.
 func NewAuditEngine(ledger viking.QueryableLedger) *AuditEngine {
-	return &AuditEngine{ledger: ledger}
+	return &AuditEngine{ledger: ledger, cfg: LoadAuditConfig()}
 }
 
 // QueryFilter for audit queries.
@@ -50,6 +82,10 @@ func (a *AuditEngine) Query(f QueryFilter) ([]viking.LedgerEntry, error) {
 	if err != nil {
 		return nil, err
 	}
+	max := a.cfg.MaxEntriesPerQuery
+	if max > 0 && len(entries) > max {
+		entries = entries[len(entries)-max:]
+	}
 	if f.Offset > 0 || f.Limit > 0 {
 		if f.Offset > len(entries) {
 			return []viking.LedgerEntry{}, nil
@@ -78,7 +114,7 @@ func (a *AuditEngine) ExportJSONL(entries []viking.LedgerEntry, w io.Writer) err
 // ExportCSV writes entries to w in CSV format.
 func (a *AuditEngine) ExportCSV(entries []viking.LedgerEntry, w io.Writer) error {
 	cw := csv.NewWriter(w)
-	if err := cw.Write([]string{"timestamp", "operator_id", "action_type", "resource", "result", "client_ip", "action_id"}); err != nil {
+	if err := cw.Write([]string{"timestamp", "operator_id", "action_type", "resource", "result", "client_ip", "action_id", "severity", "user_id"}); err != nil {
 		return err
 	}
 	for _, e := range entries {
@@ -90,6 +126,8 @@ func (a *AuditEngine) ExportCSV(entries []viking.LedgerEntry, w io.Writer) error
 			e.Result,
 			e.ClientIP,
 			e.ActionID,
+			e.Severity,
+			e.UserID,
 		}
 		if err := cw.Write(row); err != nil {
 			return err
@@ -97,6 +135,48 @@ func (a *AuditEngine) ExportCSV(entries []viking.LedgerEntry, w io.Writer) error
 	}
 	cw.Flush()
 	return cw.Error()
+}
+
+// RetentionDays returns configured retention.
+func (a *AuditEngine) RetentionDays() int {
+	if a.cfg.RetentionDays <= 0 {
+		return 90
+	}
+	return a.cfg.RetentionDays
+}
+
+// ParseQuery parses query params into QueryFilter.
+func ParseQuery(s string) (QueryFilter, error) {
+	var f QueryFilter
+	if s == "" {
+		return f, nil
+	}
+	for _, pair := range strings.Split(s, "&") {
+		kv := strings.SplitN(pair, "=", 2)
+		if len(kv) != 2 {
+			continue
+		}
+		k, v := strings.TrimSpace(kv[0]), strings.TrimSpace(kv[1])
+		switch k {
+		case "time_from":
+			t, _ := time.Parse(time.RFC3339, v)
+			f.TimeFrom = t
+		case "time_to":
+			t, _ := time.Parse(time.RFC3339, v)
+			f.TimeTo = t
+		case "operator_id":
+			f.OperatorID = v
+		case "action_type":
+			f.ActionType = v
+		case "resource":
+			f.Resource = v
+		case "offset":
+			f.Offset, _ = strconv.Atoi(v)
+		case "limit":
+			f.Limit, _ = strconv.Atoi(v)
+		}
+	}
+	return f, nil
 }
 
 // ExportCSVString returns CSV as string.

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -14,11 +15,72 @@ import (
 
 // Policy 安全策略
 type Policy struct {
-	SkillID          string   `json:"skill_id"`
-	AllowedUsers     []string `json:"allowed_users"`
-	MaxQPS           int      `json:"max_qps"`
-	RequireToken     bool     `json:"require_token"`
-	MinClassification string `json:"min_classification"`
+	SkillID           string   `json:"skill_id"`
+	AllowedUsers      []string `json:"allowed_users"`
+	MaxQPS            int      `json:"max_qps"`
+	RequireToken      bool     `json:"require_token"`
+	MinClassification string   `json:"min_classification"`
+}
+
+// PathRule 路径级策略
+type PathRule struct {
+	Path        string   `json:"path"`
+	Methods     []string `json:"methods"`
+	RequireAuth bool     `json:"require_auth"`
+}
+
+// RulesMatrix 安全矩阵配置
+type RulesMatrix struct {
+	PathRules    []PathRule `json:"path_rules"`
+	BlockedPaths []string   `json:"blocked_paths"`
+	DefaultAllow bool       `json:"default_allow"`
+}
+
+// LoadRulesMatrix loads from configs/ironclaw_rules.json.
+func LoadRulesMatrix(path string) RulesMatrix {
+	rm := RulesMatrix{DefaultAllow: true}
+	paths := []string{path}
+	if path == "" {
+		paths = []string{"configs/ironclaw_rules.json"}
+		if wd, _ := os.Getwd(); wd != "" {
+			paths = append(paths, filepath.Join(wd, "configs/ironclaw_rules.json"))
+		}
+	}
+	for _, p := range paths {
+		data, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		json.Unmarshal(data, &rm)
+		break
+	}
+	return rm
+}
+
+// CheckPath returns nil if path+method allowed, error if blocked.
+func (r RulesMatrix) CheckPath(path, method string) error {
+	for _, blocked := range r.BlockedPaths {
+		if strings.HasPrefix(path, blocked) || strings.Contains(path, blocked) {
+			return fmt.Errorf("ironclaw: path %s blocked", path)
+		}
+	}
+	for _, rule := range r.PathRules {
+		if strings.HasPrefix(path, rule.Path) {
+			if len(rule.Methods) == 0 {
+				return nil
+			}
+			for _, m := range rule.Methods {
+				if strings.EqualFold(m, method) {
+					return nil
+				}
+			}
+			return fmt.Errorf("ironclaw: method %s not allowed for %s", method, path)
+		}
+	}
+	if !r.DefaultAllow {
+		return fmt.Errorf("ironclaw: path %s not in allowlist", path)
+	}
+	return nil
 }
 
 // Request 策略检查请求

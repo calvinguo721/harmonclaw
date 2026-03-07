@@ -67,3 +67,38 @@ func TestFirewall_AllowJSON(t *testing.T) {
 		t.Errorf("application/json: want 200, got %d", rr.Code)
 	}
 }
+
+func TestFirewall_PathTraversal(t *testing.T) {
+	dir := filepath.Join(os.TempDir(), "harmonclaw-firewall-path")
+	os.MkdirAll(dir, 0755)
+	defer os.RemoveAll(dir)
+	ledger, _ := viking.NewFileLedger(dir)
+	defer ledger.Close()
+	f := NewFirewall(ledger)
+	handler := f.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) }))
+	req := httptest.NewRequest("GET", "/v1/../etc/passwd", nil)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != 400 {
+		t.Errorf("path traversal: want 400, got %d", rr.Code)
+	}
+}
+
+func TestFirewall_SuspiciousHeader(t *testing.T) {
+	dir := filepath.Join(os.TempDir(), "harmonclaw-firewall-hdr")
+	os.MkdirAll(dir, 0755)
+	defer os.RemoveAll(dir)
+	ledger, _ := viking.NewFileLedger(dir)
+	defer ledger.Close()
+	cfg := DefaultFirewallConfig()
+	cfg.BlockSuspiciousHdrs = true
+	f := NewFirewallWithConfig(ledger, cfg)
+	handler := f.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) }))
+	req := httptest.NewRequest("GET", "/v1/health", nil)
+	req.Header.Set("X-Original-URL", "/admin")
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != 403 {
+		t.Errorf("suspicious header: want 403, got %d", rr.Code)
+	}
+}

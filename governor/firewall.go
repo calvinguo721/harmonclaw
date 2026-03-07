@@ -1,4 +1,4 @@
-// Package governor (firewall) provides request firewall: body limit, Content-Type, IP rate ban.
+// Package governor (firewall) provides request firewall: body limit, Content-Type, IP rate ban, path blocklist.
 package governor
 
 import (
@@ -10,15 +10,10 @@ import (
 	"harmonclaw/viking"
 )
 
-const (
-	maxBodyBytes     = 1 << 20 // 1MB
-	maxRequestsPerIP = 20
-	banDuration      = 60 * time.Second
-)
-
-// Firewall wraps handler with body limit, Content-Type check, IP rate ban.
+// Firewall wraps handler with body limit, Content-Type check, IP rate ban, path blocklist.
 type Firewall struct {
 	ledger   viking.Ledger
+	cfg      FirewallConfig
 	ipCounts map[string]*ipEntry
 	ipBans   map[string]time.Time
 	mu       sync.RWMutex
@@ -30,8 +25,13 @@ type ipEntry struct {
 }
 
 func NewFirewall(ledger viking.Ledger) *Firewall {
+	return NewFirewallWithConfig(ledger, LoadFirewallConfig(""))
+}
+
+func NewFirewallWithConfig(ledger viking.Ledger, cfg FirewallConfig) *Firewall {
 	f := &Firewall{
 		ledger:   ledger,
+		cfg:      cfg,
 		ipCounts: make(map[string]*ipEntry),
 		ipBans:   make(map[string]time.Time),
 	}
@@ -58,6 +58,8 @@ func (f *Firewall) cleanupLoop() {
 	}
 }
 
+var suspiciousHeaders = []string{"X-Forwarded-Host", "X-Original-URL", "X-Rewrite-URL", "X-Custom-IP-Authorization"}
+
 func (f *Firewall) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ip := clientIP(r)
@@ -66,8 +68,26 @@ func (f *Firewall) Wrap(next http.Handler) http.Handler {
 			http.Error(w, `{"error":"too many requests"}`, http.StatusTooManyRequests)
 			return
 		}
+		if f.cfg.ContainsPathTraversal(r.URL.Path) || f.cfg.ContainsPathTraversal(r.URL.RawQuery) {
+			f.recordBan(ip, "path_traversal")
+			http.Error(w, `{"error":"invalid path"}`, http.StatusBadRequest)
+			return
+		}
+		if f.cfg.BlockSuspiciousHdrs {
+			for _, h := range suspiciousHeaders {
+				if r.Header.Get(h) != "" {
+					f.recordBan(ip, "suspicious_header")
+					http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+					return
+				}
+			}
+		}
+		maxBody := f.cfg.MaxBodyBytes
+		if maxBody <= 0 {
+			maxBody = 1 << 20
+		}
 		if r.Method == "POST" || r.Method == "PUT" || r.Method == "PATCH" {
-			r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
+			r.Body = http.MaxBytesReader(w, r.Body, int64(maxBody))
 			ct := r.Header.Get("Content-Type")
 			if r.ContentLength > 0 && ct != "" && !strings.Contains(ct, "application/json") && !strings.Contains(ct, "text/") && !strings.Contains(ct, "multipart/") {
 				http.Error(w, `{"error":"invalid content-type"}`, http.StatusUnsupportedMediaType)
@@ -105,6 +125,10 @@ func (f *Firewall) isBanned(ip string) bool {
 }
 
 func (f *Firewall) recordRequest(ip string) bool {
+	maxReq := f.cfg.MaxRequestsPerIP
+	if maxReq <= 0 {
+		maxReq = 20
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	e := f.ipCounts[ip]
@@ -118,13 +142,13 @@ func (f *Firewall) recordRequest(ip string) bool {
 		return true
 	}
 	e.count++
-	return e.count <= maxRequestsPerIP
+	return e.count <= maxReq
 }
 
 func (f *Firewall) ban(ip string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.ipBans[ip] = time.Now().Add(banDuration)
+	f.ipBans[ip] = time.Now().Add(f.cfg.BanDuration())
 }
 
 func (f *Firewall) recordBan(ip, reason string) {

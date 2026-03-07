@@ -118,9 +118,17 @@ func (s *Server) SetFirewall(f *governor.Firewall) { s.Firewall = f }
 func (s *Server) SetRateLimiter(r *governor.TripleRateLimiter) { s.RateLimiter = r }
 
 func (s *Server) ListenAndServe() error {
+	return s.ListenAndServeTLS("", "")
+}
+
+func (s *Server) ListenAndServeTLS(certFile, keyFile string) error {
 	h := Chain(s.Mux, s.Ledger, s.Firewall, s.RateLimiter, authEnabled())
 	h = CORS(h)
+	h = securityHeaders(h)
 	s.httpServer = &http.Server{Addr: s.Addr, Handler: h}
+	if certFile != "" && keyFile != "" {
+		return s.httpServer.ListenAndServeTLS(certFile, keyFile)
+	}
 	return s.httpServer.ListenAndServe()
 }
 

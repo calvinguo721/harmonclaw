@@ -225,7 +225,13 @@ func main() {
 	rlCfg, _ := governor.LoadRateLimitConfig("configs/ratelimit.json")
 	srv.SetRateLimiter(governor.NewTripleRateLimiter(rlCfg))
 	srv.SetFirewall(governor.NewFirewall(ledger))
-	hclog.Infof("", "HarmonClaw listening on %s [sovereignty=%s]", srv.Addr, gateway.SovereigntyMode)
+	certFile := os.Getenv("HC_TLS_CERT")
+	keyFile := os.Getenv("HC_TLS_KEY")
+	if certFile != "" && keyFile != "" {
+		hclog.Infof("", "HarmonClaw listening on %s (TLS) [sovereignty=%s]", srv.Addr, gateway.SovereigntyMode)
+	} else {
+		hclog.Infof("", "HarmonClaw listening on %s [sovereignty=%s]", srv.Addr, gateway.SovereigntyMode)
+	}
 
 	// --- graceful shutdown ---
 	sigCh := make(chan os.Signal, 1)
@@ -256,7 +262,7 @@ func main() {
 		os.Exit(0)
 	}()
 
-	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+	if err := srv.ListenAndServeTLS(certFile, keyFile); err != nil && err != http.ErrServerClosed {
 		hclog.Fatal("server died: %v", err)
 	}
 }

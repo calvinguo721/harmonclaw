@@ -15,13 +15,16 @@ import (
 
 // LedgerEntry 等保 7 字段审计格式
 type LedgerEntry struct {
-	OperatorID string `json:"operator_id"`
-	ActionType string `json:"action_type"`
-	Resource   string `json:"resource"`
-	Result     string `json:"result"` // success | fail
-	ClientIP   string `json:"client_ip"`
-	Timestamp  string `json:"timestamp"`
-	ActionID   string `json:"action_id"`
+	OperatorID   string `json:"operator_id"`
+	ActionType   string `json:"action_type"`
+	Resource     string `json:"resource"`
+	Result       string `json:"result"` // success | fail
+	ClientIP     string `json:"client_ip"`
+	Timestamp    string `json:"timestamp"`
+	ActionID     string `json:"action_id"`
+	Severity     string `json:"severity,omitempty"`     // info | warn | error | critical
+	UserID       string `json:"user_id,omitempty"`
+	ExtraDetails string `json:"extra_details,omitempty"`
 }
 
 type Ledger interface {
