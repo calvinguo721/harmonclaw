@@ -105,13 +105,25 @@ func (p *ResponsePipeline) Run(req PipelineRequest) (PipelineResponse, error) {
 	if res.Intent == IntentSkill && p.skill != nil && p.router != nil {
 		ids := p.router.Route(req.Text)
 		if len(ids) > 0 {
-			out, err := p.skill.Execute(ids[0], req.Text, nil)
-			if err != nil {
-				out = fallbackReply
+			input := req.Text
+			var lastOut string
+			for _, id := range ids {
+				out, err := p.skill.Execute(id, input, nil)
+				if err != nil {
+					continue
+				}
+				lastOut = out
+				if out != "" {
+					input = out
+				}
 			}
-			out = p.postProcess(out)
-			p.context.Append(req.SessionID, "assistant", out)
-			return PipelineResponse{Content: out, Intent: res.Intent}, nil
+			if lastOut != "" {
+				lastOut = p.postProcess(lastOut)
+				p.context.Append(req.SessionID, "assistant", lastOut)
+				return PipelineResponse{Content: lastOut, Intent: res.Intent}, nil
+			}
+			p.context.Append(req.SessionID, "assistant", fallbackReply)
+			return PipelineResponse{Content: fallbackReply, Intent: res.Intent}, nil
 		}
 	}
 

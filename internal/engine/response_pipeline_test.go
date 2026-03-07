@@ -51,8 +51,8 @@ func TestResponsePipeline_SkillIntent(t *testing.T) {
 	intent := NewIntentRecognizer("")
 	ctx := NewContextManager(nil, nil)
 	skill := &mockSkill{result: "search result"}
-	router := &mockRouter{ids: []string{"web_search"}}
-	pipe := NewResponsePipeline(intent, ctx, nil, skill, router)
+	sr := NewSkillRouter()
+	pipe := NewResponsePipeline(intent, ctx, nil, skill, sr)
 
 	res, err := pipe.Run(PipelineRequest{SessionID: "s1", Text: "执行搜索 Go 语言", Stream: false})
 	if err != nil {
@@ -131,6 +131,54 @@ func TestResponsePipeline_SensitiveFilter(t *testing.T) {
 	if !strings.Contains(res.Content, "***") {
 		t.Errorf("expected *** replacement: %q", res.Content)
 	}
+}
+
+func TestResponsePipeline_SkillFallback(t *testing.T) {
+	intent := NewIntentRecognizer("")
+	ctx := NewContextManager(nil, nil)
+	skill := &mockSkill{result: "", err: errors.New("skill failed")}
+	sr := NewSkillRouter()
+	sr.AddSkill(SkillEntry{ID: "fallback_skill", Keywords: []string{"fallback"}, Priority: 50})
+	pipe := NewResponsePipeline(intent, ctx, nil, skill, sr)
+
+	res, err := pipe.Run(PipelineRequest{SessionID: "s6a", Text: "执行 fallback 测试", Stream: false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Content != fallbackReply {
+		t.Errorf("expected fallback reply, got %q", res.Content)
+	}
+}
+
+func TestResponsePipeline_SkillFallbackSecondSucceeds(t *testing.T) {
+	intent := NewIntentRecognizer("")
+	ctx := NewContextManager(nil, nil)
+	callCount := 0
+	skill := &mockSkillExec{fn: func(id, text string, args map[string]string) (string, error) {
+		callCount++
+		if callCount == 1 {
+			return "", errors.New("first fails")
+		}
+		return "second ok", nil
+	}}
+	sr := &mockRouter{ids: []string{"first", "second"}}
+	pipe := NewResponsePipeline(intent, ctx, nil, skill, sr)
+
+	res, err := pipe.Run(PipelineRequest{SessionID: "s6b", Text: "执行", Stream: false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Content != "second ok" {
+		t.Errorf("expected second ok, got %q", res.Content)
+	}
+}
+
+type mockSkillExec struct {
+	fn func(id, text string, args map[string]string) (string, error)
+}
+
+func (m *mockSkillExec) Execute(skillID, text string, args map[string]string) (string, error) {
+	return m.fn(skillID, text, args)
 }
 
 func TestResponsePipeline_LengthTruncate(t *testing.T) {
