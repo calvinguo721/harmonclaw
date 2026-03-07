@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"log"
@@ -10,8 +11,11 @@ import (
 	"net/url"
 	"os"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
+
+	"harmonclaw/internal/edge"
 )
 
 const (
@@ -22,11 +26,12 @@ const (
 )
 
 var (
-	backendURL string
-	connected  bool
-	connMu     sync.RWMutex
-	cache      []cacheEntry
-	cacheMu    sync.RWMutex
+	backendURL    string
+	connected     bool
+	connMu        sync.RWMutex
+	cache         []cacheEntry
+	cacheMu       sync.RWMutex
+	offlineMgr    *edge.OfflineManager
 )
 
 type cacheEntry struct {
@@ -42,6 +47,7 @@ func main() {
 		backendURL = defaultBackend
 	}
 	log.Printf("hc-edge: backend=%s port=%s", backendURL, edgePort)
+	offlineMgr = edge.NewOfflineManager(backendURL)
 
 	http.HandleFunc("/", handleIndex)
 	http.HandleFunc("/health", handleHealth)
@@ -70,6 +76,14 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleProxy(w http.ResponseWriter, r *http.Request) {
+	if offlineMgr != nil && offlineMgr.IsOffline() {
+		if r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/v1/chat") {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(503)
+			json.NewEncoder(w).Encode(map[string]string{"error": "离线模式，仅可查看历史"})
+			return
+		}
+	}
 	target, err := url.Parse(backendURL)
 	if err != nil {
 		http.Error(w, "invalid backend", 500)
@@ -82,6 +96,31 @@ func handleProxy(w http.ResponseWriter, r *http.Request) {
 		req.URL.Path = r.URL.Path
 		req.Host = target.Host
 	}
+	sessionID := "edge-" + time.Now().Format("20060102")
+	if r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/v1/chat") {
+		proxy.ModifyResponse = func(resp *http.Response) error {
+			if resp.StatusCode == 200 && resp.Body != nil {
+				var chat struct {
+					Choices []struct {
+						Message struct {
+							Role    string `json:"role"`
+							Content string `json:"content"`
+						} `json:"message"`
+					} `json:"choices"`
+				}
+				data, _ := io.ReadAll(resp.Body)
+				resp.Body = io.NopCloser(io.Reader(nil))
+				if json.Unmarshal(data, &chat) == nil && len(chat.Choices) > 0 {
+					cacheAdd(sessionID, "assistant", chat.Choices[0].Message.Content)
+					if offlineMgr != nil {
+						offlineMgr.Record(sessionID, "assistant", chat.Choices[0].Message.Content)
+					}
+				}
+				resp.Body = io.NopCloser(bytes.NewReader(data))
+			}
+			return nil
+		}
+	}
 	proxy.ServeHTTP(w, r)
 }
 
@@ -89,8 +128,10 @@ func handleHealth(w http.ResponseWriter, r *http.Request) {
 	connMu.RLock()
 	c := connected
 	connMu.RUnlock()
+	offline := offlineMgr != nil && offlineMgr.IsOffline()
 	info := map[string]any{
-		"connected": c,
+		"connected": c && !offline,
+		"offline":   offline,
 		"arch":      runtime.GOARCH,
 		"os":        runtime.GOOS,
 		"backend":   backendURL,
@@ -103,12 +144,19 @@ func healthLoop() {
 	ticker := time.NewTicker(healthInterval)
 	defer ticker.Stop()
 	for range ticker.C {
-		resp, err := http.Get(backendURL + "/v1/health")
-		connMu.Lock()
-		connected = err == nil && resp != nil && resp.StatusCode == 200
-		connMu.Unlock()
-		if resp != nil {
-			resp.Body.Close()
+		if offlineMgr != nil {
+			offlineMgr.Check()
+			connMu.Lock()
+			connected = !offlineMgr.IsOffline()
+			connMu.Unlock()
+		} else {
+			resp, err := http.Get(backendURL + "/v1/health")
+			connMu.Lock()
+			connected = err == nil && resp != nil && resp.StatusCode == 200
+			connMu.Unlock()
+			if resp != nil {
+				resp.Body.Close()
+			}
 		}
 	}
 }
