@@ -1,0 +1,14 @@
+[Unit]
+Description=HarmonClaw AI Runtime
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/harmonclaw
+Restart=on-failure
+RestartSec=5
+WorkingDirectory=/opt/harmonclaw
+Environment="HC_PORT=8080"
+
+[Install]
+WantedBy=multi-user.target
