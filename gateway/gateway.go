@@ -2,6 +2,7 @@
 package gateway
 
 import (
+	"context"
 	"encoding/json"
 	"expvar"
 	"net/http"
@@ -25,6 +26,7 @@ var SovereigntyMode = "airlock"
 type Server struct {
 	Addr          string
 	Mux           *http.ServeMux
+	httpServer    *http.Server
 	Governor      *governor.Governor
 	Butler        *butler.Butler
 	Architect     *architect.Architect
@@ -104,7 +106,18 @@ func (s *Server) SetRateLimiter(r *governor.TripleRateLimiter) { s.RateLimiter =
 func (s *Server) ListenAndServe() error {
 	h := Chain(s.Mux, s.Ledger, s.Firewall, s.RateLimiter, authEnabled())
 	h = CORS(h)
-	return http.ListenAndServe(s.Addr, h)
+	s.httpServer = &http.Server{Addr: s.Addr, Handler: h}
+	return s.httpServer.ListenAndServe()
+}
+
+// Shutdown gracefully stops the server with the given timeout.
+func (s *Server) Shutdown(timeout time.Duration) error {
+	if s.httpServer == nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	return s.httpServer.Shutdown(ctx)
 }
 
 func recoverMiddleware(ledger viking.Ledger, next http.Handler) http.Handler {

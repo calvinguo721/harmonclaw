@@ -7,11 +7,14 @@ import (
 	"encoding/json"
 	"expvar"
 	"fmt"
+	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"harmonclaw/architect"
@@ -223,7 +226,37 @@ func main() {
 	srv.SetRateLimiter(governor.NewTripleRateLimiter(rlCfg))
 	srv.SetFirewall(governor.NewFirewall(ledger))
 	hclog.Infof("", "HarmonClaw listening on %s [sovereignty=%s]", srv.Addr, gateway.SovereigntyMode)
-	if err := srv.ListenAndServe(); err != nil {
+
+	// --- graceful shutdown ---
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sigCh
+		hclog.Infof("", "shutdown signal received, draining...")
+
+		if err := srv.Shutdown(30 * time.Second); err != nil {
+			hclog.Infof("", "server shutdown: %v", err)
+		}
+		if a.Crons() != nil {
+			a.Crons().Stop()
+		}
+		if snapMgr != nil {
+			if p, err := snapMgr.Snapshot(); err == nil {
+				hclog.Infof("", "viking snapshot: %s", p)
+			}
+		}
+		ledger.Record(viking.LedgerEntry{
+			OperatorID: "gateway",
+			ActionType: "system shutdown",
+			Resource:   "main",
+			Result:     "success",
+			Timestamp:  time.Now().Format(time.RFC3339),
+		})
+		ledger.Close()
+		os.Exit(0)
+	}()
+
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		hclog.Fatal("server died: %v", err)
 	}
 }
