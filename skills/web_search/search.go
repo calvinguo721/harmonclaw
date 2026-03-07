@@ -67,17 +67,47 @@ func (s *Search) doExecute(input skills.SkillInput) skills.SkillOutput {
 	if q == "" {
 		return skills.SkillOutput{TraceID: input.TraceID, Status: "error", Error: "query is empty"}
 	}
+	q = strings.TrimSpace(q)
+	cacheKey := "q:" + strings.ToLower(q)
 
-	apiURL := getSearchAPIURL()
-	if apiURL != "" {
-		return s.searchViaAPI(input, q, apiURL, start)
+	if cached, ok := cacheGet(cacheKey); ok {
+		out := skills.SkillOutput{TraceID: input.TraceID, Status: "ok", Data: cached}
+		out.Metrics.Ms = time.Since(start).Milliseconds()
+		out.Metrics.Bytes = len(cached)
+		return out
 	}
-	return s.searchViaDuckDuckGo(input, q, getDuckDuckGoURL(), start)
+
+	if !acquireSearchSlot() {
+		return skills.SkillOutput{TraceID: input.TraceID, Status: "error", Error: "search concurrency limit exceeded"}
+	}
+	defer releaseSearchSlot()
+
+	var out skills.SkillOutput
+	apiURL := getSearchAPIURL()
+	searxURL := getSearXNGURL()
+	if apiURL != "" {
+		out = s.searchViaAPI(input, q, apiURL, start)
+	} else if searxURL != "" {
+		out = s.searchViaSearXNG(input, q, searxURL, start)
+	} else {
+		out = s.searchViaDuckDuckGo(input, q, getDuckDuckGoURL(), start)
+	}
+	if out.Status == "ok" && len(out.Data) > 0 {
+		cacheSet(cacheKey, out.Data)
+	}
+	return out
 }
 
 func getSearchAPIURL() string {
 	if u := strings.TrimSpace(os.Getenv("HC_SEARCH_API")); u != "" {
 		return u
+	}
+	return ""
+}
+
+func getSearXNGURL() string {
+	if u := strings.TrimSpace(os.Getenv("HC_SEARCH_SEARXNG")); u != "" {
+		return strings.TrimSuffix(u, "/")
 	}
 	return ""
 }
@@ -129,6 +159,54 @@ func (s *Search) searchViaAPI(input skills.SkillInput, q, apiURL string, start t
 	for i := 0; i < top; i++ {
 		r := sr.Results[i]
 		items = append(items, searchResult{Title: r.Title, URL: r.URL, Snippet: r.Snippet})
+	}
+	outData, _ := json.Marshal(items)
+
+	out := skills.SkillOutput{TraceID: input.TraceID, Status: "ok", Data: outData}
+	out.Metrics.Ms = time.Since(start).Milliseconds()
+	out.Metrics.Bytes = len(outData)
+	return out
+}
+
+func (s *Search) searchViaSearXNG(input skills.SkillInput, q string, baseURL string, start time.Time) skills.SkillOutput {
+	u := baseURL + "/search?q=" + url.QueryEscape(q) + "&format=json"
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, u, nil)
+	if err != nil {
+		return skills.SkillOutput{TraceID: input.TraceID, Status: "error", Error: err.Error()}
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; HarmonClaw/1.0)")
+
+	client := governor.SecureClient()
+	resp, err := client.Do(req)
+	if err != nil {
+		return skills.SkillOutput{TraceID: input.TraceID, Status: "error", Error: err.Error()}
+	}
+	defer resp.Body.Close()
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return skills.SkillOutput{TraceID: input.TraceID, Status: "error", Error: err.Error()}
+	}
+
+	var sr struct {
+		Results []struct {
+			Title   string `json:"title"`
+			URL     string `json:"url"`
+			Content string `json:"content"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal(data, &sr); err != nil {
+		return skills.SkillOutput{TraceID: input.TraceID, Status: "error", Error: fmt.Sprintf("searxng parse: %v", err)}
+	}
+
+	top := maxResults
+	if len(sr.Results) < top {
+		top = len(sr.Results)
+	}
+	items := make([]searchResult, 0, top)
+	for i := 0; i < top; i++ {
+		r := sr.Results[i]
+		items = append(items, searchResult{Title: r.Title, URL: r.URL, Snippet: r.Content})
 	}
 	outData, _ := json.Marshal(items)
 
