@@ -243,6 +243,30 @@ func (s *Server) handleToken(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"token": token, "user_id": userID})
 }
 
+func (s *Server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "POST only")
+		return
+	}
+	body, _ := io.ReadAll(r.Body)
+	r.Body.Close()
+	var req struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	if json.Unmarshal(body, &req) != nil || req.Username == "" {
+		writeError(w, http.StatusBadRequest, "username required")
+		return
+	}
+	userID := req.Username
+	token, err := governor.GenerateToken(userID, "user")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "token generation failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"token": token, "user_id": userID})
+}
+
 func (s *Server) handleTestIllegal(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("X-HarmonClaw-Alert", "True")
 	writeJSON(w, http.StatusForbidden, map[string]string{

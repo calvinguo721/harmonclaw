@@ -73,7 +73,7 @@ func (s *Server) routes() {
 	s.Mux.HandleFunc("GET /v1/ledger/latest", s.handleLedger)
 	s.Mux.HandleFunc("GET /v1/ledger/trace", s.handleLedgerTrace)
 	s.Mux.HandleFunc("POST /v1/token", s.handleToken)
-	s.Mux.HandleFunc("POST /v1/auth/login", s.handleToken)
+	s.Mux.HandleFunc("POST /v1/auth/login", s.handleAuthLogin)
 	s.Mux.HandleFunc("GET /v1/test/illegal", s.handleTestIllegal)
 	s.Mux.HandleFunc("GET /v1/test/panic", s.handleTestPanic)
 	s.Mux.HandleFunc("GET /v1/audit/query", s.handleAuditQuery)

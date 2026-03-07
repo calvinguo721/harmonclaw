@@ -206,11 +206,19 @@ const $=s=>document.querySelector(s);
 const $$=s=>document.querySelectorAll(s);
 let history=[],busy=false,prevLedgerHash='';
 
+const TOKEN_KEY='harmonclaw_token';
+(function checkAuth(){
+  if(location.pathname==='/login.html'||location.pathname.endsWith('/login.html'))return;
+  if(localStorage.getItem(TOKEN_KEY))return;
+  if(location.pathname!==''&&location.pathname!=='/'&&location.pathname!=='/index.html')return;
+  fetch('/v1/ledger/latest?limit=1',{headers:{'Authorization':'Bearer x'}}).then(r=>{
+    if(r.status===401)location.href='/login.html';
+  }).catch(()=>{});
+})();
+
 const chatFlow=$('#chatFlow'),chatBody=$('#chatBody'),chatIn=$('#chatIn'),btnSend=$('#btnSend'),
       ledger=$('#ledger'),skillList=$('#skillList'),archLog=$('#archLog'),archIn=$('#archIn'),
       sMode=$('#sMode'),sHealth=$('#sHealth'),healthDot=$('#healthDot'),version=$('#version'),tokenIn=$('#tokenIn');
-
-const TOKEN_KEY='harmonclaw_token';
 function getToken(){return localStorage.getItem(TOKEN_KEY)||''}
 function setToken(t){localStorage.setItem(TOKEN_KEY,t||'');tokenIn.value=t||''}
 function authHeaders(){
