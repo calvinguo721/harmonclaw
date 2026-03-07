@@ -3,6 +3,8 @@ package doc_perceiver
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -15,64 +17,163 @@ func init() {
 }
 
 var (
-	reDate = regexp.MustCompile(`\d{4}[-/]\d{1,2}[-/]\d{1,2}`)
-	reURL  = regexp.MustCompile(`https?://[^\s]+`)
-	reNum  = regexp.MustCompile(`\b\d{2,}(?:\.\d+)?\b`)
+	reWord      = regexp.MustCompile(`[\p{L}\p{N}_]{2,}`)
+	maxSummary  = 500
 )
 
 type Perceiver struct{}
 
 func (p *Perceiver) GetIdentity() skills.SkillIdentity {
-	return skills.SkillIdentity{ID: "doc_perceiver", Version: "0.1.0", Core: "architect"}
+	return skills.SkillIdentity{ID: "doc_perceiver", Version: "0.2.0", Core: "architect"}
 }
 
 func (p *Perceiver) Execute(input skills.SkillInput) skills.SkillOutput {
 	start := time.Now()
 
-	if input.Text == "" {
-		return skills.SkillOutput{TraceID: input.TraceID, Status: "error", Error: "input text is empty"}
+	content := input.Text
+	fileType := "text"
+
+	if dir := getDir(input); dir != "" {
+		results, err := scanDir(dir)
+		if err != nil {
+			return skills.SkillOutput{TraceID: input.TraceID, Status: "error", Error: "dir scan: " + err.Error()}
+		}
+		data, _ := json.Marshal(map[string]any{"files": results})
+		out := skills.SkillOutput{TraceID: input.TraceID, Status: "ok", Data: data}
+		out.Metrics.Ms = time.Since(start).Milliseconds()
+		out.Metrics.Bytes = len(data)
+		return out
+	}
+	if path := getPath(input); path != "" {
+		if isDir(path) {
+			results, err := scanDir(path)
+			if err != nil {
+				return skills.SkillOutput{TraceID: input.TraceID, Status: "error", Error: "dir scan: " + err.Error()}
+			}
+			data, _ := json.Marshal(map[string]any{"files": results})
+			out := skills.SkillOutput{TraceID: input.TraceID, Status: "ok", Data: data}
+			out.Metrics.Ms = time.Since(start).Milliseconds()
+			out.Metrics.Bytes = len(data)
+			return out
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return skills.SkillOutput{TraceID: input.TraceID, Status: "error", Error: "read file: " + err.Error()}
+		}
+		content = string(data)
+		fileType = detectFileType(path)
+	}
+
+	if content == "" {
+		return skills.SkillOutput{TraceID: input.TraceID, Status: "error", Error: "no content"}
 	}
 
 	result := docResult{
-		Title:       extractTitle(input.Text),
-		Sections:    extractSections(input.Text),
-		Entities:    extractEntities(input.Text),
-		ActionItems: extractActionItems(input.Text),
+		Title:     extractTitle(content),
+		Summary:   extractSummary(content),
+		Keywords:  extractKeywords(content),
+		WordCount: wordCount(content),
+		FileType:  fileType,
 	}
 
 	data, _ := json.Marshal(result)
 	out := skills.SkillOutput{TraceID: input.TraceID, Status: "ok", Data: data}
 	out.Metrics.Ms = time.Since(start).Milliseconds()
 	out.Metrics.Bytes = len(data)
-	out.Metrics.Tokens = len(input.Text) / 4
+	out.Metrics.Tokens = len(content) / 4
 	return out
 }
 
-// --- output schema ---
+func getPath(input skills.SkillInput) string {
+	if input.Args == nil {
+		return ""
+	}
+	if p := input.Args["path"]; p != "" {
+		return safePath(p)
+	}
+	if p := input.Args["file"]; p != "" {
+		return safePath(p)
+	}
+	return ""
+}
+
+func getDir(input skills.SkillInput) string {
+	if input.Args == nil {
+		return ""
+	}
+	if d := input.Args["dir"]; d == "" {
+		return ""
+	}
+	return safePath(input.Args["dir"])
+}
+
+func safePath(p string) string {
+	if p == "" {
+		return ""
+	}
+	if strings.Contains(p, "..") {
+		return ""
+	}
+	return filepath.Clean(p)
+}
+
+func isDir(p string) bool {
+	info, err := os.Stat(p)
+	return err == nil && info.IsDir()
+}
+
+func detectFileType(path string) string {
+	ext := strings.ToLower(filepath.Ext(path))
+	switch ext {
+	case ".txt":
+		return "text"
+	case ".md":
+		return "markdown"
+	case ".json":
+		return "json"
+	default:
+		return ext
+	}
+}
+
+func scanDir(dir string) ([]docResult, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	var results []docResult
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := strings.ToLower(e.Name())
+		if !strings.HasSuffix(name, ".txt") && !strings.HasSuffix(name, ".md") && !strings.HasSuffix(name, ".json") {
+			continue
+		}
+		fpath := filepath.Join(dir, e.Name())
+		data, err := os.ReadFile(fpath)
+		if err != nil {
+			continue
+		}
+		content := string(data)
+		results = append(results, docResult{
+			Title:     extractTitle(content),
+			Summary:   extractSummary(content),
+			Keywords:  extractKeywords(content),
+			WordCount: wordCount(content),
+			FileType:  detectFileType(fpath),
+		})
+	}
+	return results, nil
+}
 
 type docResult struct {
-	Title       string       `json:"title"`
-	Sections    []section    `json:"sections"`
-	Entities    []entity     `json:"entities"`
-	ActionItems []actionItem `json:"action_items"`
+	Title     string   `json:"title"`
+	Summary   string   `json:"summary"`
+	Keywords  []string `json:"keywords"`
+	WordCount int      `json:"word_count"`
+	FileType  string   `json:"file_type"`
 }
-
-type section struct {
-	Heading string   `json:"heading"`
-	Bullets []string `json:"bullets"`
-}
-
-type entity struct {
-	Type  string `json:"type"`
-	Value string `json:"value"`
-}
-
-type actionItem struct {
-	Text     string `json:"text"`
-	Priority string `json:"priority"`
-}
-
-// --- extractors (all local-scope, GC-friendly) ---
 
 func extractTitle(text string) string {
 	for _, line := range strings.SplitN(text, "\n", 10) {
@@ -84,76 +185,37 @@ func extractTitle(text string) string {
 	return "Untitled"
 }
 
-func extractSections(text string) []section {
-	var secs []section
-	cur := -1
-
-	for _, line := range strings.Split(text, "\n") {
-		t := strings.TrimSpace(line)
-		if t == "" {
-			continue
-		}
-		if strings.HasPrefix(t, "#") {
-			heading := strings.TrimSpace(strings.TrimLeft(t, "#"))
-			secs = append(secs, section{Heading: heading})
-			cur = len(secs) - 1
-		} else if strings.HasPrefix(t, "- ") || strings.HasPrefix(t, "* ") {
-			bullet := strings.TrimSpace(t[2:])
-			if cur >= 0 {
-				secs[cur].Bullets = append(secs[cur].Bullets, bullet)
-			} else {
-				secs = append(secs, section{Heading: "General", Bullets: []string{bullet}})
-				cur = len(secs) - 1
-			}
-		}
+func extractSummary(text string) string {
+	text = strings.TrimSpace(text)
+	runes := []rune(text)
+	if len(runes) <= maxSummary {
+		return text
 	}
-
-	if len(secs) == 0 {
-		preview := text
-		if len(preview) > 200 {
-			preview = preview[:200]
-		}
-		secs = []section{{Heading: "Content", Bullets: []string{strings.TrimSpace(preview)}}}
-	}
-	return secs
+	return string(runes[:maxSummary]) + "..."
 }
 
-func extractEntities(text string) []entity {
-	var ents []entity
-	for _, m := range reDate.FindAllString(text, 20) {
-		ents = append(ents, entity{Type: "date", Value: m})
+func extractKeywords(text string) []string {
+	seen := make(map[string]bool)
+	var kw []string
+	for _, m := range reWord.FindAllString(text, 50) {
+		m = strings.ToLower(m)
+		if len(m) >= 2 && !seen[m] {
+			seen[m] = true
+			kw = append(kw, m)
+		}
+		if len(kw) >= 15 {
+			break
+		}
 	}
-	for _, m := range reURL.FindAllString(text, 20) {
-		ents = append(ents, entity{Type: "url", Value: m})
-	}
-	for _, m := range reNum.FindAllString(text, 20) {
-		ents = append(ents, entity{Type: "number", Value: m})
-	}
-	return ents
+	return kw
 }
 
-func extractActionItems(text string) []actionItem {
-	var items []actionItem
-	prefixes := []string{"TODO:", "TODO ", "ACTION:", "ACTION ", "TASK:", "TASK ", "- [ ] "}
-
-	for _, line := range strings.Split(text, "\n") {
-		t := strings.TrimSpace(line)
-		upper := strings.ToUpper(t)
-
-		hit := strings.HasPrefix(upper, "TODO") || strings.HasPrefix(upper, "ACTION") ||
-			strings.HasPrefix(upper, "TASK") || strings.Contains(t, "[ ]")
-		if !hit {
-			continue
+func wordCount(text string) int {
+	n := 0
+	for _, w := range strings.Fields(text) {
+		if len(w) > 0 {
+			n++
 		}
-
-		clean := t
-		for _, p := range prefixes {
-			if strings.HasPrefix(upper, strings.ToUpper(p)) {
-				clean = strings.TrimSpace(t[len(p):])
-				break
-			}
-		}
-		items = append(items, actionItem{Text: clean, Priority: "medium"})
 	}
-	return items
+	return n
 }

@@ -228,7 +228,8 @@ func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
 	if text == "" {
 		text = req.Input
 	}
-	if text == "" {
+	allowEmpty := skillID == "doc_perceiver" && req.Args != nil && (req.Args["path"] != "" || req.Args["file"] != "" || req.Args["dir"] != "")
+	if text == "" && !allowEmpty {
 		writeError(w, http.StatusBadRequest, "input text is empty")
 		return
 	}

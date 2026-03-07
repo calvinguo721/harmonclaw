@@ -194,7 +194,7 @@ func TestSmoke(t *testing.T) {
 		}
 		defer resp.Body.Close()
 		if resp.StatusCode != 200 {
-			t.Errorf("ledger: want 200, got %d", resp.StatusCode)
+			t.Errorf("ledger: want 200, got %d: %s", resp.StatusCode, mustRead(resp.Body))
 		}
 	})
 
