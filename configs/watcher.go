@@ -42,13 +42,9 @@ func (w *Watcher) Start() {
 		case <-w.stop:
 			return
 		case <-ticker.C:
-			if w.changed() {
-				bus.Send(bus.Message{
-					From:    bus.Governor,
-					Type:    "config.reloaded",
-					Payload: map[string]string{"path": w.dir},
-				})
-			}
+		if w.changed() {
+			bus.Publish(bus.EventConfigReloaded, map[string]string{"path": w.dir})
+		}
 		}
 	}
 }
