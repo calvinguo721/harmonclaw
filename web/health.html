@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HarmonClaw - Health</title>
+  <style>
+    :root { --bg:#0d1117; --surf:#161b22; --bdr:#30363d; --ok:#3fb950; --warn:#d29922; --err:#f85149; --txt:#c9d1d9; --txt2:#8b949e; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--txt); min-height: 100vh; padding: 1.5rem; }
+    h1 { font-size: 1.5rem; margin-bottom: 1rem; color: var(--txt); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+    .card { background: var(--surf); border: 1px solid var(--bdr); border-radius: 8px; padding: 1rem; }
+    .card h2 { font-size: .85rem; color: var(--txt2); margin-bottom: .5rem; text-transform: uppercase; letter-spacing: .05em; }
+    .core { display: flex; align-items: center; gap: .5rem; margin-bottom: .3rem; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; }
+    .dot.ok { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+    .dot.warn { background: var(--warn); box-shadow: 0 0 8px var(--warn); }
+    .dot.err { background: var(--err); box-shadow: 0 0 8px var(--err); }
+    .skill-list { font-size: .8rem; color: var(--txt2); }
+    .trend { height: 60px; background: var(--bg); border-radius: 4px; margin-top: .5rem; }
+    .meta { font-size: .75rem; color: var(--txt2); margin-top: 1rem; }
+  </style>
+</head>
+<body>
+  <h1>HarmonClaw Health</h1>
+  <div class="grid">
+    <div class="card">
+      <h2>Governor</h2>
+      <div class="core"><span class="dot" id="gov-dot"></span><span id="gov-status">-</span></div>
+      <div class="meta" id="gov-mode">-</div>
+    </div>
+    <div class="card">
+      <h2>Butler</h2>
+      <div class="core"><span class="dot" id="butler-dot"></span><span id="butler-status">-</span></div>
+    </div>
+    <div class="card">
+      <h2>Architect</h2>
+      <div class="core"><span class="dot" id="arch-dot"></span><span id="arch-status">-</span></div>
+      <div class="skill-list" id="skills">-</div>
+    </div>
+    <div class="card">
+      <h2>Sovereignty</h2>
+      <div id="sov-mode">-</div>
+    </div>
+    <div class="card">
+      <h2>Metrics</h2>
+      <div id="metrics">-</div>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Request Trend (last 5 min)</h2>
+    <svg class="trend" id="trend" width="100%" height="60" viewBox="0 0 300 60" preserveAspectRatio="none"></svg>
+  </div>
+  <div class="meta" style="margin-top:1rem">Auto-refresh: 5s | <a href="/" style="color:#58a6ff">← Back</a></div>
+
+  <script>
+    const base = window.location.origin;
+    const trendData = [];
+
+    function dotClass(status) {
+      if (status === 'ok') return 'ok';
+      if (status === 'degraded') return 'warn';
+      return 'err';
+    }
+
+    function fetchHealth() {
+      fetch(base + '/v1/health').then(r => r.json()).then(d => {
+        document.getElementById('gov-status').textContent = d.governor?.status || '-';
+        document.getElementById('gov-dot').className = 'dot ' + dotClass(d.governor?.status);
+        document.getElementById('gov-mode').textContent = 'Mode: ' + (d.governor?.mode || '-');
+        document.getElementById('butler-status').textContent = d.butler?.status || '-';
+        document.getElementById('butler-dot').className = 'dot ' + dotClass(d.butler?.status);
+        document.getElementById('arch-status').textContent = d.architect?.status || '-';
+        document.getElementById('arch-dot').className = 'dot ' + dotClass(d.architect?.status);
+        document.getElementById('skills').textContent = (d.architect?.registered_skills || []).join(', ') || '-';
+        document.getElementById('sov-mode').textContent = d.governor?.mode || '-';
+      }).catch(() => {});
+    }
+
+    function fetchVars() {
+      fetch(base + '/debug/vars').then(r => r.json()).then(d => {
+        const g = d.goroutine_count ?? '-';
+        const h = d.heap_alloc_bytes ?? 0;
+        const avg = d.endpoint_latency_avg_ms ?? 0;
+        document.getElementById('metrics').innerHTML = `goroutines: ${g}<br>heap: ${(h/1024/1024).toFixed(2)} MB<br>avg latency: ${avg} ms`;
+        let total = 0;
+        if (d.endpoint_requests && typeof d.endpoint_requests === 'object') {
+          for (const v of Object.values(d.endpoint_requests)) {
+            total += (typeof v === 'object' && v.Value !== undefined) ? v.Value : (typeof v === 'number' ? v : 0);
+          }
+        }
+        trendData.push(total);
+        if (trendData.length > 60) trendData.shift();
+        drawTrend();
+      }).catch(() => {});
+    }
+
+    function drawTrend() {
+      const svg = document.getElementById('trend');
+      const max = Math.max(...trendData, 1);
+      const pts = trendData.map((v, i) => `${(i/59)*100},${60 - (v/max)*50}`).join(' ');
+      svg.innerHTML = `<polyline fill="none" stroke="#3fb950" stroke-width="2" points="${pts}"/>`;
+    }
+
+    fetchHealth();
+    fetchVars();
+    setInterval(fetchHealth, 5000);
+    setInterval(fetchVars, 5000);
+  </script>
+</body>
+</html>
