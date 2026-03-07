@@ -1,4 +1,11 @@
-
 harmonclaw
 harmonclaw.exe
 harmonclaw-rv
+harmonclaw-*
+*.exe
+logs/
+data/
+.env
+*.key
+.DS_Store
+Thumbs.db
