@@ -1,0 +1,9 @@
+{
+  "doc_perceiver": {"timeout_ms": 30000, "max_memory_mb": 256},
+  "web_search": {"timeout_ms": 15000, "max_memory_mb": 128},
+  "tts": {"timeout_ms": 60000, "max_memory_mb": 512},
+  "openclaw_proxy": {"timeout_ms": 30000, "max_memory_mb": 256},
+  "mimicclaw_adapter": {"timeout_ms": 30000, "max_memory_mb": 256},
+  "nanoclaw_adapter": {"timeout_ms": 30000, "max_memory_mb": 256},
+  "picoclaw_adapter": {"timeout_ms": 30000, "max_memory_mb": 256}
+}
