@@ -365,6 +365,82 @@ func TestSmoke(t *testing.T) {
 			t.Errorf("viking search: want 200/501, got %d", resp.StatusCode)
 		}
 	})
+
+	t.Run("token", func(t *testing.T) {
+		body := []byte(`{"user_id":"smoke"}`)
+		resp, err := http.Post(baseURL+"/v1/token", "application/json", bytes.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			t.Errorf("token: want 200, got %d: %s", resp.StatusCode, mustRead(resp.Body))
+			return
+		}
+		raw, _ := io.ReadAll(resp.Body)
+		var d map[string]any
+		if json.Unmarshal(raw, &d) == nil && d["token"] == nil {
+			t.Error("token: missing token in response")
+		}
+	})
+
+	t.Run("auth_login", func(t *testing.T) {
+		body := []byte(`{"username":"smoke","password":"x"}`)
+		resp, err := http.Post(baseURL+"/v1/auth/login", "application/json", bytes.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			t.Errorf("auth login: want 200, got %d: %s", resp.StatusCode, mustRead(resp.Body))
+		}
+	})
+
+	t.Run("ledger_trace", func(t *testing.T) {
+		resp, err := http.Get(baseURL + "/v1/ledger/trace?action_id=00000000-0000-0000-0000-000000000000")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 && resp.StatusCode != 400 {
+			t.Errorf("ledger trace: want 200/400, got %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("persona_post", func(t *testing.T) {
+		body := []byte(`{"id":"smoke","persona":{"system_prompt":"test"},"default":"smoke"}`)
+		resp, err := http.Post(baseURL+"/v1/butler/persona", "application/json", bytes.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 && resp.StatusCode != 501 {
+			t.Errorf("persona POST: want 200/501, got %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("viking_search_post", func(t *testing.T) {
+		body := []byte(`{"query":"test"}`)
+		resp, err := http.Post(baseURL+"/v1/viking/search", "application/json", bytes.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 && resp.StatusCode != 501 {
+			t.Errorf("viking search POST: want 200/501, got %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("test_illegal", func(t *testing.T) {
+		resp, err := http.Get(baseURL + "/v1/test/illegal")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 403 {
+			t.Errorf("test illegal: want 403, got %d", resp.StatusCode)
+		}
+	})
 }
 
 func mustRead(r io.Reader) string {
