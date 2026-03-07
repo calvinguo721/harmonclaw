@@ -1,0 +1,7 @@
+{
+  "chat": {"keywords": ["你好", "hello", "hi", "hey"], "patterns": []},
+  "search": {"keywords": ["搜索", "查找", "search", "find", "查一下", "帮我找", "搜"], "patterns": ["搜一下", "查一下"]},
+  "skill": {"keywords": ["执行", "运行", "调用", "execute", "run", "调用技能", "技能"], "patterns": ["^执行\\s+", "调用技能"]},
+  "memory": {"keywords": ["记得", "之前", "recall", "remember", "你还记得"], "patterns": []},
+  "system": {"keywords": ["状态", "健康", "status", "version", "help"], "patterns": ["^help$"]}
+}

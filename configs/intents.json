@@ -1,0 +1,22 @@
+{
+  "chat": {
+    "keywords": ["你好", "hello", "聊聊", "闲聊", "hi", "hey", "在吗", "干嘛", "怎么样", "how are you", "what's up"],
+    "patterns": ["^(hi|hey|hello)\\s*$", "^你好$", "^在吗$"]
+  },
+  "search": {
+    "keywords": ["搜索", "查找", "search", "find", "查一下", "帮我找", "搜", "查询", "look up"],
+    "patterns": ["搜[索一].*", "查[找一].*", "搜一下", "查一下", "search\\s+for", "find\\s+.*"]
+  },
+  "skill": {
+    "keywords": ["执行", "运行", "调用", "execute", "run", "运行技能", "调用技能", "技能"],
+    "patterns": ["^执行\\s+", "^运行\\s+", "^run\\s+", "调用技能"]
+  },
+  "memory": {
+    "keywords": ["记得", "之前", "上次", "recall", "remember", "我们说过", "你还记得"],
+    "patterns": ["你还记得.*吗", "之前.*说过", "上次.*什么"]
+  },
+  "system": {
+    "keywords": ["状态", "健康", "status", "health", "版本", "version", "帮助", "help", "help"],
+    "patterns": ["^状态$", "^健康$", "^版本$", "^help$", "^help\\s*$"]
+  }
+}

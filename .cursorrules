@@ -477,3 +477,200 @@ commit: "test: full integration test suite"
 - 创建 CHANGELOG.md
 - git tag v0.7.0 && git push --tags
 commit: "milestone: v0.7.0 - production ready"
+
+## ====================================================
+## v0.8 深度吞噬 — OpenClaw 核心逻辑真正消化（不是骨架）
+## ====================================================
+
+## TASK 51 [P0]: 对话引擎深度重写 — 意图识别
+internal/engine/conversation_engine.go 当前只是骨架。重写为真正能用的对话引擎：
+- 实现基于关键词+模式匹配的意图识别器（不依赖外部 NLP）
+- 意图类型：chat（闲聊）、search（搜索）、skill（技能调用）、memory（记忆查询）、system（系统命令）
+- 每个意图有置信度分数（0-1），取最高分
+- 支持多轮对话上下文：如果上一轮是 search，这一轮「继续」应该继续 search
+- 中文和英文双语支持
+- 意图识别规则可配置：configs/intents.json
+- 写 intent_test.go，覆盖至少 20 种输入场景
+commit: "feat: real intent recognition engine with pattern matching"
+
+## TASK 52 [P0]: 对话引擎深度重写 — 上下文管理器
+internal/engine/context_manager.go：
+- 维护每个 session 的对话历史（最近 20 轮）
+- 滑动窗口：超过 20 轮自动摘要前 10 轮存入 Viking 长期记忆
+- 上下文注入：每次调用 LLM 时，自动注入最近 5 轮对话 + Viking 检索到的相关记忆
+- session 超时 30 分钟自动归档
+- 并发安全：sync.RWMutex 保护 session map
+- 写 context_manager_test.go
+commit: "feat: session context manager with sliding window + memory injection"
+
+## TASK 53 [P0]: 对话引擎深度重写 — 响应生成管道
+internal/engine/response_pipeline.go：
+- 完整管道：意图识别 → 上下文组装 → LLM 调用 → 后处理 → 记忆写入
+- 后处理：敏感词过滤（configs/sensitive_words.json）、长度截断、格式化
+- 如果是 skill 意图：跳过 LLM，直接路由到 Architect
+- 如果是 memory 意图：先查 Viking，再组装 prompt 让 LLM 总结
+- 支持流式和非流式两种模式
+- 错误降级：LLM 不可用时返回预设回复
+- 写 response_pipeline_test.go
+commit: "feat: complete response pipeline with intent routing + post-processing"
+
+## TASK 54 [P0]: 技能路由深度重写 — 智能匹配
+internal/engine/skill_router.go 重写：
+- 技能注册表：每个技能声明自己能处理的意图关键词和描述
+- 匹配算法：TF-IDF 风格的关键词权重匹配（纯 Go 实现，不依赖外部库）
+- 支持技能链：用户说「搜索XXX然后总结」→ web_search → doc_perceiver pipeline
+- 技能优先级：如果多个技能匹配，按优先级排序
+- 技能降级：首选技能不可用时自动切换到备选
+- 与 Architect scheduler 深度集成（不是调个函数，是走完整的 worker pool）
+- 写 skill_router_test.go，覆盖单技能/多技能/链式/降级场景
+commit: "feat: intelligent skill router with TF-IDF matching + chaining"
+
+## TASK 55 [P0]: 记忆系统深度重写 — 短期+长期+检索
+internal/engine/memory_engine.go 重写：
+- 短期记忆：当前 session 的对话（内存中，sync.Map）
+- 长期记忆写入：对话结束时，自动提取关键信息存入 Viking
+  - 提取算法：关键词频率 + 命名实体（简单正则：日期、数字、人名模式）
+  - 每条记忆带标签：topic, entities, timestamp, session_id, importance(1-5)
+- 长期记忆检索：
+  - 关键词搜索（Viking 现有倒排索引）
+  - 时间范围过滤
+  - 重要性排序
+  - 返回 top 5 最相关记忆片段
+- 记忆衰减：每次检索更新 last_accessed，30 天未访问的记忆降低排序权重
+- 记忆合并：相似度高的记忆自动合并（简单的 Jaccard 相似度）
+- 写 memory_engine_test.go
+commit: "feat: deep memory engine with extraction, retrieval, decay, merge"
+
+## TASK 56 [P0]: Viking 搜索引擎升级 — 混合检索
+internal/viking/search.go 升级：
+- 当前可能只有简单搜索。升级为混合检索：
+  - BM25 算法实现（纯 Go，经典信息检索算法）
+  - 中文分词改进：基于字典的正向最大匹配（内置 5000 常用词词典 configs/dict.txt）
+  - 英文分词：空格 + Porter Stemmer（纯 Go 实现）
+  - 搜索结果评分 = BM25 分数 × 时间衰减 × 重要性权重
+- 索引更新：新文档写入时自动更新倒排索引
+- 索引持久化：索引存为 JSON 文件，启动时加载
+- 写 search_bm25_test.go
+commit: "feat: BM25 hybrid search with Chinese segmentation"
+
+## TASK 57 [P0]: Viking 存储引擎升级 — Engram 格式
+internal/viking/engram.go：
+- 定义 Engram 结构体
+- Engram 序列化为结构化 .txt 文件（人类可读，每个字段一行，--- 分隔）
+- Engram 目录结构：data/viking/engrams/{date}/{session_id}/{engram_id}.txt
+- 批量加载：启动时扫描所有 engram 建立索引
+- GC 策略：超过 10000 条时，按 importance × recency 淘汰最不重要的 10%
+- 写 engram_test.go
+commit: "feat: Engram structured memory format with lifecycle management"
+
+## TASK 58 [P0]: LLM 路由器升级 — 多模型支持
+internal/llm/router.go：
+- 支持的后端：DeepSeek（主力）、OpenAI 兼容接口（通用）、Ollama 本地模型（离线）
+- 路由策略：按主权模式、按任务类型
+- 统一接口：LLMRequest → LLMResponse
+- 失败自动切换下一个后端
+- configs/llm.json 配置文件
+- 写 router_test.go
+commit: "feat: multi-model LLM router with sovereignty-aware routing"
+
+## TASK 59 [P1]: 完整对话流程集成测试
+tests/conversation_integration_test.go
+commit: "test: comprehensive conversation integration tests"
+
+## TASK 60 [P0]: configs/intents.json + configs/sensitive_words.json + configs/dict.txt
+创建三个配置文件
+commit: "config: intent rules, sensitive words, Chinese dictionary"
+
+## ====================================================
+## v0.9 端云协同 — 3060 大脑 + RV2 轻客户端
+## ====================================================
+
+## TASK 61 [P0]: RV2 轻客户端 — 核心
+cmd/hc-edge/main.go
+commit: "feat: hc-edge lightweight client for RV2"
+
+## TASK 62 [P0]: RV2 专用前端
+web/edge/index.html
+commit: "feat: ultra-lightweight edge frontend for RV2"
+
+## TASK 63 [P0]: 端云安全通道
+internal/edge/tunnel.go
+commit: "feat: edge device registration + heartbeat + command channel"
+
+## TASK 64 [P1]: 边缘设备管理前端
+web/index.html 加 Edge Devices Tab
+commit: "feat: edge device management panel"
+
+## TASK 65 [P1]: 离线模式
+internal/edge/offline.go
+commit: "feat: offline mode with local cache + auto-reconnect"
+
+## ====================================================
+## v1.0 技能真实化
+## ====================================================
+
+## TASK 66 [P0]: doc_perceiver 深度实现
+## TASK 67 [P0]: web_search 深度实现
+## TASK 68 [P0]: tts 深度实现
+## TASK 69 [P0]: openclaw_proxy 深度实现
+## TASK 70 [P1]: 三个 proxy 技能深度实现
+
+## ====================================================
+## v1.1 安全深化
+## ====================================================
+
+## TASK 71 [P0]: Governor 安全内核升级
+## TASK 72 [P0]: Governor 审计日志升级
+## TASK 73 [P0]: IronClaw 安全矩阵升级
+## TASK 74 [P1]: HTTPS/TLS 支持
+## TASK 75 [P1]: CORS 和 CSP 安全头完善
+
+## ====================================================
+## v1.2 前端完善
+## ====================================================
+
+## TASK 76 [P0]: 前端对话界面重做
+## TASK 77 [P0]: 前端 Governor 面板重做
+## TASK 78 [P1]: 前端 Architect 面板重做
+## TASK 79 [P1]: 前端统一导航 + 响应式布局最终版
+
+## ====================================================
+## v1.3 商业化准备
+## ====================================================
+
+## TASK 80 [P0]: 安装脚本
+## TASK 81 [P0]: 二进制签名 + 校验
+## TASK 82 [P0]: harmonclaw.com 静态首页
+## TASK 83 [P1]: API 文档自动生成
+## TASK 84 [P1]: SDK 完善
+## TASK 85 [P1]: CLI 完善
+
+## ====================================================
+## v1.4 测试深化
+## ====================================================
+
+## TASK 86 [P0]: 压力测试
+## TASK 87 [P0]: 安全测试
+## TASK 88 [P0]: 端到端测试
+## TASK 89 [P1]: 基准测试
+## TASK 90 [P1]: 模糊测试
+
+## ====================================================
+## v1.5 性能优化
+## ====================================================
+
+## TASK 91 [P0]: 内存优化
+## TASK 92 [P1]: 启动速度优化
+## TASK 93 [P1]: 请求管道优化
+
+## ====================================================
+## v1.6 最终收尾
+## ====================================================
+
+## TASK 94 [P0]: 完整 CHANGELOG.md
+## TASK 95 [P0]: README 最终版
+## TASK 96 [P0]: 代码清理最终版
+## TASK 97 [P0]: .cursorrules 最终统计更新
+## TASK 98 [P1]: configs/ironclaw_rules.json 完善
+## TASK 99 [P0]: git push + tag
+## TASK 100 [P0]: 最终验收报告
