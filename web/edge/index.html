@@ -1,0 +1,5 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>HC Edge</title></head>
+<body><h1>HarmonClaw Edge</h1><p>Backend: <span id="status">checking...</span></p>
+<script>fetch('/health').then(r=>r.json()).then(d=>{document.getElementById('status').textContent=d.connected?'Connected':'Offline';}).catch(()=>{document.getElementById('status').textContent='Error';});</script>
+</body></html>
