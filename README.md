@@ -34,42 +34,54 @@
 - **Architect**：scheduler 优先级调度、registry 技能注册、pipeline 技能管道
 - **Viking**：store 键值存储、search 全文检索、snapshot 版本快照
 
-## 快速启动
+## 快速开始
 
 ```bash
-make run
-# 或
+go build ./cmd/harmonclaw/
+go test ./...
 go run ./cmd/harmonclaw/
 ```
 
 访问 http://localhost:8080
 
-## API 列表
+## API 端点列表（21 个）
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | /v1/health | 健康检查，三核状态 + skills |
 | GET | /v1/governor/sovereignty | 当前主权模式与白名单 |
 | POST | /v1/governor/sovereignty | 切换主权模式（shadow/airlock/opensea） |
-| GET/POST | /v1/audit/query | 审计查询（time_from, time_to, operator_id, action_type, resource, offset, limit） |
+| GET | /v1/audit/query | 审计查询（query params） |
+| POST | /v1/audit/query | 审计查询（JSON body） |
 | GET | /v1/butler/persona | 人格列表与默认 |
-| POST | /v1/butler/persona | 切换人格（default） |
+| POST | /v1/butler/persona | 切换人格 |
 | POST | /v1/chat/completions | 对话（支持 stream:true SSE） |
 | POST | /v1/skills/execute | 技能执行 |
 | POST | /v1/engram/inject | 记忆注入 |
 | GET | /v1/ledger/latest?limit=N | 最新审计记录（默认 20） |
 | GET | /v1/ledger/trace?action_id=xxx | 按 action_id 追踪链路 |
-| GET | /v1/architect/skills | 技能注册表（版本+健康） |
+| POST | /v1/token | 获取 Bearer Token |
+| POST | /v1/auth/login | 登录（username+password，返回 JWT） |
+| GET | /v1/architect/skills | 技能注册表 |
 | POST | /v1/architect/pipeline/execute | Pipeline 执行 |
 | GET | /v1/architect/crons | Cron 任务列表 |
 | GET | /v1/viking/snapshots | 快照列表 |
-| GET/POST | /v1/viking/search | 全文检索 |
-| POST | /v1/token | 获取 Bearer Token |
-| GET | /debug/vars | expvar 指标 |
+| GET | /v1/viking/search | 全文检索（GET） |
+| POST | /v1/viking/search | 全文检索（POST） |
+| GET | /debug/vars | expvar 指标（endpoint/skill 统计、延迟） |
 
-## 配置
+## 配置文件
 
-环境变量：`HC_PORT`、`HC_DATA_DIR`、`HC_LOG_LEVEL`、`DEEPSEEK_API_KEY`、`HC_AUTH_ENABLED`、`HC_IRONCLAW_POLICIES`、`HC_SOVEREIGNTY_MODE`、`HC_CONFIG`
+| 文件 | 说明 |
+|------|------|
+| configs/config.json | 主配置（version、port、data_dir 等） |
+| configs/policies.json | IronClaw 策略（skill 权限） |
+| configs/allowed-boards.json | 硬件白名单（Orange Pi RV2/3B 等） |
+| configs/skill-quotas.json | 技能超时与内存配额 |
+| configs/crons.json | 定时任务 |
+| configs/persona.json | Butler 人格配置 |
+
+环境变量：`HC_PORT`、`HC_DATA_DIR`、`HC_LOG_LEVEL`、`DEEPSEEK_API_KEY`、`HC_AUTH_ENABLED`、`HC_JWT_SECRET`、`HC_SOVEREIGNTY_MODE`、`HC_CONFIG`
 
 ## 铁律概要（.cursorrules）
 
@@ -86,7 +98,10 @@ go run ./cmd/harmonclaw/
 
 ```bash
 make build      # 本地
-make build-rv   # RISC-V
-make test       # vet + build
-make smoke      # 端到端 smoke 测试
+make build-rv   # RISC-V 交叉编译
+make clean     # 清理
 ```
+
+## 许可证
+
+BSL 1.1（Business Source License 1.1）
