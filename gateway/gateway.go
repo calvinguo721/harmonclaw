@@ -16,6 +16,7 @@ import (
 	"harmonclaw/butler"
 	"harmonclaw/governor"
 	"harmonclaw/governor/ironclaw"
+	"harmonclaw/internal/edge"
 	"harmonclaw/viking"
 )
 
@@ -42,6 +43,7 @@ type Server struct {
 	VikingSnap    *viking.SnapshotManager
 	Firewall      *governor.Firewall
 	RateLimiter   *governor.TripleRateLimiter
+	EdgeTunnel    *edge.Tunnel
 }
 
 func New(addr string, gov *governor.Governor, b *butler.Butler, a *architect.Architect, ledger viking.Ledger, policies []ironclaw.Policy, version string) *Server {
@@ -59,6 +61,7 @@ func NewWithEngramDir(addr string, gov *governor.Governor, b *butler.Butler, a *
 		Policies:      policies,
 		Version:       version,
 		EngramBaseDir: engramBaseDir,
+		EdgeTunnel:    edge.NewTunnel(),
 	}
 	if ql, ok := ledger.(viking.QueryableLedger); ok {
 		s.Audit = governor.NewAuditEngine(ql)
@@ -93,6 +96,12 @@ func (s *Server) routes() {
 	s.Mux.HandleFunc("GET /v1/viking/snapshots", s.handleVikingSnapshots)
 	s.Mux.HandleFunc("GET /v1/viking/search", s.handleVikingSearch)
 	s.Mux.HandleFunc("POST /v1/viking/search", s.handleVikingSearch)
+	if s.EdgeTunnel != nil {
+		s.Mux.HandleFunc("POST /v1/edge/register", edge.HandleRegister(s.EdgeTunnel))
+		s.Mux.HandleFunc("POST /v1/edge/heartbeat", edge.HandleHeartbeat(s.EdgeTunnel))
+		s.Mux.HandleFunc("GET /v1/edge/devices", edge.HandleDevices(s.EdgeTunnel))
+		s.Mux.HandleFunc("POST /v1/edge/command", edge.HandleCommand(s.EdgeTunnel))
+	}
 	s.Mux.Handle("GET /debug/vars", expvar.Handler())
 
 	s.Mux.Handle("GET /static/", http.StripPrefix("/static", http.FileServer(http.Dir("web"))))
