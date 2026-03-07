@@ -1,4 +1,4 @@
-// Package tts provides EdgeTTS and PiperTTS synthesis.
+// Package tts provides TTS synthesis via API or text+phoneme fallback.
 package tts
 
 import (
@@ -10,7 +10,8 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
+	"regexp"
+	"strings"
 	"time"
 
 	"harmonclaw/governor"
@@ -21,85 +22,23 @@ func init() {
 	skills.Register(&TTS{})
 }
 
-const defaultVoice = "zh-CN-XiaoyiNeural"
+const (
+	defaultVoice   = "zh-CN-XiaoyiNeural"
+	defaultTimeout = 60 * time.Second
+)
 
-type TTSBackend interface {
-	Synthesize(text, voice string) ([]byte, error)
-}
-
-type EdgeTTS struct {
-	apiURL string
-	client *http.Client
-}
-
-func NewEdgeTTS() *EdgeTTS {
-	url := os.Getenv("EDGE_TTS_URL")
-	if url == "" {
-		url = "http://localhost:5000/synthesize"
-	}
-	return &EdgeTTS{apiURL: url, client: governor.SecureClient()}
-}
-
-func (e *EdgeTTS) Synthesize(text, voice string) ([]byte, error) {
-	if voice == "" {
-		voice = defaultVoice
-	}
-	body, _ := json.Marshal(map[string]string{"text": text, "voice": voice})
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, e.apiURL, bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := e.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("edge tts %d: %s", resp.StatusCode, b)
-	}
-	return io.ReadAll(resp.Body)
-}
-
-type PiperTTS struct {
-	modelPath string
-}
-
-func NewPiperTTS() *PiperTTS {
-	path := os.Getenv("PIPER_MODEL")
-	if path == "" {
-		path = "zh_CN-huayan-medium.onnx"
-	}
-	return &PiperTTS{modelPath: path}
-}
-
-func (p *PiperTTS) Synthesize(text, _ string) ([]byte, error) {
-	tmp, err := os.CreateTemp("", "piper-*.wav")
-	if err != nil {
-		return nil, err
-	}
-	tmpPath := tmp.Name()
-	tmp.Close()
-	defer os.Remove(tmpPath)
-
-	cmd := exec.Command("piper", "--model", p.modelPath, "--output_file", tmpPath)
-	cmd.Stdin = bytes.NewReader([]byte(text))
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return nil, fmt.Errorf("piper: %w: %s", err, out)
-	}
-	return os.ReadFile(tmpPath)
-}
+var sentenceSplitRe = regexp.MustCompile(`[。！？.!?]\s*|\n+`)
 
 type TTS struct{}
 
 func (t *TTS) GetIdentity() skills.SkillIdentity {
-	return skills.SkillIdentity{ID: "tts", Version: "0.1.0", Core: "architect"}
+	return skills.SkillIdentity{ID: "tts", Version: "0.2.0", Core: "architect"}
 }
 
 func (t *TTS) Execute(input skills.SkillInput) skills.SkillOutput {
-	ctx := context.Background()
-	return skills.RunSandboxed(ctx, input.TraceID, func() skills.SkillOutput {
+	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
+	defer cancel()
+	return skills.RunSandboxedWithTimeout(ctx, input.TraceID, defaultTimeout, func() skills.SkillOutput {
 		return t.doExecute(input)
 	})
 }
@@ -119,26 +58,82 @@ func (t *TTS) doExecute(input skills.SkillInput) skills.SkillOutput {
 		voice = input.Args["voice"]
 	}
 
-	sovereignty := "airlock"
-	if input.Args != nil && input.Args["sovereignty"] != "" {
-		sovereignty = input.Args["sovereignty"]
+	endpoint := strings.TrimSpace(os.Getenv("HC_TTS_ENDPOINT"))
+	if endpoint != "" {
+		return t.synthesizeViaAPI(input, text, voice, endpoint, start)
+	}
+	return t.fallbackTextPhoneme(input, text, start)
+}
+
+func (t *TTS) synthesizeViaAPI(input skills.SkillInput, text, voice, endpoint string, start time.Time) skills.SkillOutput {
+	body, _ := json.Marshal(map[string]string{"text": text, "voice": voice})
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return skills.SkillOutput{TraceID: input.TraceID, Status: "error", Error: err.Error()}
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := governor.SecureClient()
+	resp, err := client.Do(req)
+	if err != nil {
+		return skills.SkillOutput{TraceID: input.TraceID, Status: "error", Error: err.Error()}
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		return skills.SkillOutput{TraceID: input.TraceID, Status: "error", Error: fmt.Sprintf("TTS API %d: %s", resp.StatusCode, b)}
 	}
 
-	var backend TTSBackend
-	if sovereignty == "shadow" {
-		backend = NewPiperTTS()
-	} else {
-		backend = NewEdgeTTS()
-	}
-
-	audio, err := backend.Synthesize(text, voice)
+	audio, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return skills.SkillOutput{TraceID: input.TraceID, Status: "error", Error: err.Error()}
 	}
 
-	data, _ := json.Marshal(map[string]any{"audio_base64": base64.StdEncoding.EncodeToString(audio), "bytes": len(audio)})
+	data, _ := json.Marshal(map[string]any{
+		"audio_base64": base64.StdEncoding.EncodeToString(audio),
+		"bytes":        len(audio),
+	})
 	out := skills.SkillOutput{TraceID: input.TraceID, Status: "ok", Data: data}
 	out.Metrics.Ms = time.Since(start).Milliseconds()
 	out.Metrics.Bytes = len(audio)
+	return out
+}
+
+func (t *TTS) fallbackTextPhoneme(input skills.SkillInput, text string, start time.Time) skills.SkillOutput {
+	sentences := sentenceSplitRe.Split(text, -1)
+	var filtered []string
+	for _, s := range sentences {
+		s = strings.TrimSpace(s)
+		if s != "" {
+			filtered = append(filtered, s)
+		}
+	}
+	if len(filtered) == 0 {
+		filtered = []string{text}
+	}
+
+	phonemes := splitToPhonemes(text)
+
+	data, _ := json.Marshal(map[string]any{
+		"text":      text,
+		"sentences": filtered,
+		"phonemes":  phonemes,
+		"fallback":  true,
+	})
+	out := skills.SkillOutput{TraceID: input.TraceID, Status: "ok", Data: data}
+	out.Metrics.Ms = time.Since(start).Milliseconds()
+	out.Metrics.Bytes = len(data)
+	return out
+}
+
+func splitToPhonemes(text string) []string {
+	var out []string
+	for _, r := range text {
+		if r == ' ' || r == '\n' || r == '\t' {
+			continue
+		}
+		out = append(out, string(r))
+	}
 	return out
 }
