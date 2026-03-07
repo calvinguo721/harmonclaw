@@ -248,6 +248,7 @@ func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
 		input.TraceID = fmt.Sprintf("%d", time.Now().UnixMilli())
 	}
 
+	recordSkillCall(skillID)
 	output, err := s.Architect.ExecuteSkill(skillID, input)
 	if err != nil {
 		if err == architect.ErrBackpressure {
