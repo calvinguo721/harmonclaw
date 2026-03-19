@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HarmonClaw - Error</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, sans-serif; background: #0d1117; color: #c9d1d9; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+    .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 2rem; max-width: 480px; text-align: center; }
+    h1 { color: #f85149; font-size: 2rem; margin: 0 0 0.5rem; }
+    .code { font-size: 4rem; font-weight: 700; color: #58a6ff; }
+    p { color: #8b949e; margin: 1rem 0; }
+    a { color: #58a6ff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="code" id="code">500</div>
+    <h1 id="title">Server Error</h1>
+    <p id="msg">An unexpected error occurred.</p>
+    <a href="/">← Back to Home</a>
+  </div>
+  <script>
+    const code = '{{CODE}}';
+    const titles = { '401': 'Unauthorized', '403': 'Forbidden', '404': 'Not Found', '429': 'Too Many Requests', '500': 'Server Error' };
+    document.getElementById('code').textContent = code;
+    document.getElementById('title').textContent = titles[code] || 'Error';
+    document.getElementById('msg').textContent = '{{MSG}}';
+  </script>
+</body>
+</html>

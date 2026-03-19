@@ -1,0 +1,18 @@
+name: CI
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - run: go vet ./...
+      - run: go test ./...
+      - run: go build ./cmd/harmonclaw/
+      - run: CGO_ENABLED=0 GOOS=linux GOARCH=riscv64 go build -o /dev/null ./cmd/harmonclaw/

@@ -1,0 +1,11 @@
+{
+  "version": "1.0",
+  "crons": [
+    {
+      "id": "health_check",
+      "expr": "0 * * * *",
+      "skill_id": "doc_perceiver",
+      "args": {}
+    }
+  ]
+}

@@ -1,0 +1,117 @@
+// Package viking provides atomic SafeWrite with Merkle audit.
+package viking
+
+import (
+	"fmt"
+	"hash/crc32"
+	"log"
+	"os"
+	"path/filepath"
+)
+
+// Classification 等保分级，Governor 可按此决定是否允许出网
+const (
+	ClassPublic    = "public"
+	ClassInternal  = "internal"
+	ClassSensitive = "sensitive"
+	ClassSecret    = "secret"
+)
+
+func SafeWrite(path string, data []byte, classification string) (uint32, error) {
+	if classification == "" {
+		classification = ClassInternal
+	}
+	header := fmt.Sprintf("# classification=%s\n", classification)
+
+	tmpPath := path + ".tmp"
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return 0, fmt.Errorf("mkdir %s: %w", dir, err)
+	}
+
+	f, err := os.Create(tmpPath)
+	if err != nil {
+		return 0, fmt.Errorf("create %s: %w", tmpPath, err)
+	}
+
+	if _, err := f.WriteString(header); err != nil {
+		f.Close()
+		os.Remove(tmpPath)
+		return 0, fmt.Errorf("write header %s: %w", tmpPath, err)
+	}
+	_, err = f.Write(data)
+	if err != nil {
+		f.Close()
+		os.Remove(tmpPath)
+		return 0, fmt.Errorf("write %s: %w", tmpPath, err)
+	}
+
+	if err := f.Sync(); err != nil {
+		f.Close()
+		os.Remove(tmpPath)
+		return 0, fmt.Errorf("fsync %s: %w", tmpPath, err)
+	}
+
+	if err := f.Close(); err != nil {
+		os.Remove(tmpPath)
+		return 0, fmt.Errorf("close %s: %w", tmpPath, err)
+	}
+
+	if err := os.Rename(tmpPath, path); err != nil {
+		os.Remove(tmpPath)
+		return 0, fmt.Errorf("rename %s -> %s: %w", tmpPath, path, err)
+	}
+
+	// Merkle audit: skip for audit_root.jsonl to avoid recursion
+	if filepath.Base(path) != "audit_root.jsonl" {
+		if root, err := ComputeRoot(); err == nil {
+			if err := AppendAuditRoot(root); err != nil {
+				log.Printf("viking: append audit root: %v", err)
+			}
+		} else {
+			log.Printf("viking: compute merkle root: %v", err)
+		}
+	}
+
+	return crc32.ChecksumIEEE(data), nil
+}
+
+// LedgerSafeAppend atomically appends a line to a JSONL file (IRON RULE #7).
+// Format: json + "\t" + crc32_hex + "\n"
+func LedgerSafeAppend(fpath string, line []byte) error {
+	tmpPath := fpath + ".tmp"
+	dir := filepath.Dir(fpath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("mkdir %s: %w", dir, err)
+	}
+
+	existing, _ := os.ReadFile(fpath)
+	checksum := crc32.ChecksumIEEE(line)
+	appendLine := append(append(line, '\t'), []byte(fmt.Sprintf("%08x\n", checksum))...)
+	full := append(existing, appendLine...)
+
+	f, err := os.Create(tmpPath)
+	if err != nil {
+		return fmt.Errorf("create %s: %w", tmpPath, err)
+	}
+	if _, err := f.Write(full); err != nil {
+		f.Close()
+		os.Remove(tmpPath)
+		return fmt.Errorf("write %s: %w", tmpPath, err)
+	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		os.Remove(tmpPath)
+		return fmt.Errorf("fsync %s: %w", tmpPath, err)
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("close %s: %w", tmpPath, err)
+	}
+	if err := os.Rename(tmpPath, fpath); err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("rename %s -> %s: %w", tmpPath, fpath, err)
+	}
+	_ = checksum
+	return nil
+}

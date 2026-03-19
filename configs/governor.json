@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "firewall": {
+    "max_body_bytes": 1048576,
+    "max_requests_per_ip": 20,
+    "ban_duration_sec": 60,
+    "path_blocklist": ["../", "..\\", "%2e%2e", "..%2f", "%2e%2e/", "..%5c"],
+    "block_suspicious_headers": true
+  }
+}

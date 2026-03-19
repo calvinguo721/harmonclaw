@@ -1,0 +1,8 @@
+{
+  "boards": [
+    {"name": "Orange Pi RV2", "arch": "riscv64", "status": "approved"},
+    {"name": "Orange Pi 3B", "arch": "arm64", "status": "approved"}
+  ],
+  "os": ["OpenHarmony 5.0", "OpenHarmony 4.1"],
+  "geo": ["CN"]
+}

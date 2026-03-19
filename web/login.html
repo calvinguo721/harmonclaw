@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>HarmonClaw 登录</title>
+<style>
+:root{--bg:#0a0a0c;--surf:#121218;--surf2:#1a1a22;--bdr:#2a2a35;--butler:#3d7fc4;--txt:#e0e0e8;--txt2:#8888a0;--txt3:#505068}
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+body{font-family:"Segoe UI","Noto Sans SC",-apple-system,sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;display:flex;align-items:center;justify-content:center}
+.login-box{width:320px;padding:2rem;background:var(--surf);border:1px solid var(--bdr);border-radius:12px}
+.login-box h1{font-size:1.2rem;margin-bottom:1.5rem;color:var(--butler);letter-spacing:.1em}
+.login-box input{width:100%;padding:.6rem .8rem;margin-bottom:1rem;background:var(--surf2);border:1px solid var(--bdr);border-radius:6px;color:var(--txt);font-size:.9rem}
+.login-box input:focus{border-color:var(--butler);outline:none}
+.login-box button{width:100%;padding:.6rem;background:var(--butler);color:#fff;border:none;border-radius:6px;font-size:.9rem;font-weight:700;cursor:pointer}
+.login-box button:hover{opacity:.9}
+.login-box .err{color:#c43d4a;font-size:.8rem;margin-top:.5rem}
+</style>
+</head>
+<body>
+<div class="login-box">
+  <h1>HarmonClaw</h1>
+  <form id="loginForm">
+    <input type="text" id="username" placeholder="用户名" autocomplete="username" required>
+    <input type="password" id="password" placeholder="密码" autocomplete="current-password" required>
+    <button type="submit">登录</button>
+    <div class="err" id="err"></div>
+  </form>
+</div>
+<script>
+const TOKEN_KEY='harmonclaw_token';
+document.getElementById('loginForm').onsubmit=async function(e){
+  e.preventDefault();
+  const u=document.getElementById('username').value.trim();
+  const p=document.getElementById('password').value;
+  const errEl=document.getElementById('err');
+  errEl.textContent='';
+  try{
+    const r=await fetch('/v1/auth/login',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({username:u,password:p})
+    });
+    const d=await r.json();
+    if(r.ok&&d.token){
+      localStorage.setItem(TOKEN_KEY,d.token);
+      window.location.href='/';
+    }else{
+      errEl.textContent=d.error||'登录失败';
+    }
+  }catch(e){
+    errEl.textContent='网络错误: '+e.message;
+  }
+};
+</script>
+</body>
+</html>
