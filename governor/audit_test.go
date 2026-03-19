@@ -27,7 +27,7 @@ func TestAuditEngine_QueryAndExport(t *testing.T) {
 		Timestamp:  time.Now().Format(time.RFC3339),
 		ActionID:   "aid-1",
 	})
-	time.Sleep(50 * time.Millisecond) // allow drain to write
+	time.Sleep(200 * time.Millisecond) // allow drain to write
 	var ledgerIf viking.Ledger = ledger
 	ql, ok := ledgerIf.(viking.QueryableLedger)
 	if !ok {

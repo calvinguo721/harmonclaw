@@ -1,4 +1,4 @@
-// Package openclaw_adapter proxies OpenClaw API with format conversion, retry, and concurrency control.
+// Package openclaw_adapter proxies OpenClaw v3.13+ API via POST /tools/invoke with Bearer auth.
 package openclaw_adapter
 
 import (
@@ -34,18 +34,18 @@ var ocSem chan struct{}
 var ocSemOnce sync.Once
 
 type ocConfig struct {
-	TimeoutSec   int `json:"timeout_sec"`
-	MaxRetries   int `json:"max_retries"`
+	TimeoutSec    int `json:"timeout_sec"`
+	MaxRetries    int `json:"max_retries"`
 	MaxConcurrent int `json:"max_concurrent"`
-	RetryBaseMs  int `json:"retry_base_ms"`
+	RetryBaseMs   int `json:"retry_base_ms"`
 }
 
 func loadOCConfig() ocConfig {
 	cfg := ocConfig{
-		TimeoutSec:   30,
-		MaxRetries:   defaultMaxRetries,
+		TimeoutSec:    30,
+		MaxRetries:    defaultMaxRetries,
 		MaxConcurrent: defaultMaxConcur,
-		RetryBaseMs:  500,
+		RetryBaseMs:   500,
 	}
 	paths := []string{"configs/openclaw.json"}
 	if wd, _ := os.Getwd(); wd != "" {
@@ -95,12 +95,15 @@ func releaseOC() {
 	}
 }
 
+// Adapter implements skills.Skill for OpenClaw v3.13+ API.
 type Adapter struct{}
 
+// GetIdentity returns the skill identity.
 func (a *Adapter) GetIdentity() skills.SkillIdentity {
-	return skills.SkillIdentity{ID: "openclaw_proxy", Version: "0.3.0", Core: "architect"}
+	return skills.SkillIdentity{ID: "openclaw_proxy", Version: "0.4.0", Core: "architect"}
 }
 
+// Execute runs the OpenClaw tool via POST /tools/invoke.
 func (a *Adapter) Execute(input skills.SkillInput) skills.SkillOutput {
 	cfg := loadOCConfig()
 	timeout := time.Duration(cfg.TimeoutSec) * time.Second
@@ -118,6 +121,18 @@ func getEndpoint() string {
 	return defaultEndpoint
 }
 
+func getToken() string {
+	return strings.TrimSpace(os.Getenv("OPENCLAW_API_TOKEN"))
+}
+
+// OpenClawRequest is the v3.13+ request format for /tools/invoke.
+type OpenClawRequest struct {
+	Tool       string      `json:"tool"`
+	Action     string      `json:"action"`
+	Args       interface{} `json:"args"`
+	SessionKey string      `json:"sessionKey"`
+}
+
 func (a *Adapter) doExecute(input skills.SkillInput) skills.SkillOutput {
 	start := time.Now()
 	if input.Args != nil && input.Args["sovereignty"] == "shadow" {
@@ -130,12 +145,21 @@ func (a *Adapter) doExecute(input skills.SkillInput) skills.SkillOutput {
 	defer releaseOC()
 
 	endpoint := getEndpoint()
-	hcReq := map[string]any{
-		"text":  input.Text,
-		"args":  input.Args,
-		"trace": input.TraceID,
+	args := make(map[string]interface{})
+	if input.Args != nil {
+		for k, v := range input.Args {
+			args[k] = v
+		}
 	}
-	ocReq := hcToOpenClaw(hcReq)
+	args["query"] = input.Text
+	args["text"] = input.Text
+
+	ocReq := OpenClawRequest{
+		Tool:       "openclaw",
+		Action:     "invoke",
+		Args:       args,
+		SessionKey: input.TraceID,
+	}
 	body, _ := json.Marshal(ocReq)
 
 	cfg := loadOCConfig()
@@ -157,14 +181,6 @@ func (a *Adapter) doExecute(input skills.SkillInput) skills.SkillOutput {
 	return out
 }
 
-func hcToOpenClaw(hc map[string]any) map[string]any {
-	return map[string]any{
-		"query": hc["text"],
-		"args":  hc["args"],
-		"trace": hc["trace"],
-	}
-}
-
 func openClawToHC(oc []byte) ([]byte, error) {
 	var raw map[string]any
 	if json.Unmarshal(oc, &raw) != nil {
@@ -179,12 +195,15 @@ func openClawToHC(oc []byte) ([]byte, error) {
 func (a *Adapter) doRequest(traceID, endpoint string, body []byte, timeout time.Duration, start time.Time) skills.SkillOutput {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	url := strings.TrimSuffix(endpoint, "/") + "/invoke"
+	url := strings.TrimSuffix(endpoint, "/") + "/tools/invoke"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return skills.SkillOutput{TraceID: traceID, Status: "error", Error: err.Error()}
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if token := getToken(); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
 
 	resp, err := openclawClient.Do(req)
 	if err != nil {

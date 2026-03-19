@@ -30,6 +30,7 @@ func InitSecureClient(ledger viking.Ledger, mode string, allowedDomains []string
 		clientDomains = allowedDomains
 		clientMode = mode
 		clientInitDone = true
+		SetSovereigntyConfig(mode, allowedDomains)
 		secureClientVal = &http.Client{
 			Transport: &sovereigntyTransport{
 				next: &countingTransport{next: http.DefaultTransport},
@@ -45,6 +46,7 @@ func SetSovereigntyMode(mode string, allowedDomains []string) {
 	clientMode = mode
 	clientDomains = allowedDomains
 	clientMu.Unlock()
+	SetSovereigntyConfig(mode, allowedDomains)
 	if clientLedger != nil && oldMode != mode {
 		clientLedger.Record(viking.LedgerEntry{
 			OperatorID: "governor",
@@ -79,13 +81,35 @@ type sovereigntyTransport struct {
 
 func (t *sovereigntyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if clientLedger != nil && req.URL != nil {
-		clientMu.RLock()
-		mode, domains := clientMode, clientDomains
-		clientMu.RUnlock()
 		host := req.URL.Host
 		if idx := strings.Index(host, ":"); idx >= 0 {
 			host = host[:idx]
 		}
+		// Prefer new three-tier config (personal/local/connected)
+		if sc := GetSovereigntyConfig(); sc != nil {
+			resolved := ResolveMode(sc.Mode)
+			if resolved == string(ModePersonal) || resolved == string(ModeLocal) || resolved == string(ModeConnected) {
+				if !sc.IsAllowed(host) {
+					clientLedger.Record(viking.LedgerEntry{
+						OperatorID: "governor",
+						ActionType: sc.Mode + ":outbound_blocked",
+						Resource:   host,
+						Result:     "fail",
+						ClientIP:   "",
+						Timestamp:  time.Now().Format(time.RFC3339),
+						ActionID:   "",
+					})
+					return nil, errors.New("sovereignty: " + host + " not allowed in " + sc.Mode)
+				}
+				if t.next == nil {
+					t.next = http.DefaultTransport
+				}
+				return t.next.RoundTrip(req)
+			}
+		}
+		clientMu.RLock()
+		mode, domains := clientMode, clientDomains
+		clientMu.RUnlock()
 		if !domainAllowedLocked(host, mode, domains) {
 			clientLedger.Record(viking.LedgerEntry{
 				OperatorID: "governor",

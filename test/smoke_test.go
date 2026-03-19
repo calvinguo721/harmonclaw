@@ -23,10 +23,7 @@ import (
 	"harmonclaw/viking"
 
 	_ "harmonclaw/skills/doc_perceiver"
-	_ "harmonclaw/skills/mimicclaw_adapter"
-	_ "harmonclaw/skills/nanoclaw_adapter"
 	_ "harmonclaw/skills/openclaw_adapter"
-	_ "harmonclaw/skills/picoclaw_adapter"
 	_ "harmonclaw/skills/web_search"
 	_ "harmonclaw/skills/tts"
 )

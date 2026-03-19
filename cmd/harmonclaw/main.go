@@ -32,10 +32,7 @@ import (
 	"harmonclaw/viking"
 
 	_ "harmonclaw/skills/doc_perceiver"
-	_ "harmonclaw/skills/mimicclaw_adapter"
-	_ "harmonclaw/skills/nanoclaw_adapter"
 	_ "harmonclaw/skills/openclaw_adapter"
-	_ "harmonclaw/skills/picoclaw_adapter"
 	_ "harmonclaw/skills/web_search"
 	_ "harmonclaw/skills/tts"
 )
@@ -126,22 +123,36 @@ func main() {
 
 	sovMode := cfg.SovereigntyMode
 	sovDomains := []string{}
-	if data, err := os.ReadFile(cfg.SovereigntyPath); err == nil {
-		var sov struct {
-			Version string `json:"version"`
-			Modes   map[string]struct {
-				Desc    string   `json:"description"`
-				Domains []string `json:"allowed_domains"`
-			} `json:"modes"`
-		}
-		if json.Unmarshal(data, &sov) == nil {
-			hclog.Infof("", "sovereignty: loaded from %s (version=%s)", cfg.SovereigntyPath, sov.Version)
-			if m, ok := sov.Modes[sovMode]; ok {
-				sovDomains = m.Domains
-			}
+	if sc, err := governor.LoadSovereigntyConfig(cfg.SovereigntyPath); err == nil {
+		hclog.Infof("", "sovereignty: loaded from %s (mode=%s)", cfg.SovereigntyPath, sc.Mode)
+		sovMode = sc.Mode
+		switch governor.ResolveMode(sc.Mode) {
+		case string(governor.ModeConnected):
+			sovDomains = sc.Connected.Whitelist
+		case string(governor.ModeLocal):
+			sovDomains = sc.Local.AllowedEndpoints
+		default:
+			sovDomains = []string{}
 		}
 	} else {
-		hclog.Infof("", "sovereignty: %s (using default)", err)
+		// Legacy format fallback
+		if data, err := os.ReadFile(cfg.SovereigntyPath); err == nil {
+			var sov struct {
+				Version string `json:"version"`
+				Modes   map[string]struct {
+					Desc    string   `json:"description"`
+					Domains []string `json:"allowed_domains"`
+				} `json:"modes"`
+			}
+			if json.Unmarshal(data, &sov) == nil {
+				hclog.Infof("", "sovereignty: loaded legacy from %s", cfg.SovereigntyPath)
+				if m, ok := sov.Modes[sovMode]; ok {
+					sovDomains = m.Domains
+				}
+			}
+		} else {
+			hclog.Infof("", "sovereignty: %s (using default)", err)
+		}
 	}
 	governor.InitSecureClient(ledger, sovMode, sovDomains)
 	gateway.SovereigntyMode = sovMode

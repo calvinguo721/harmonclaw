@@ -22,9 +22,6 @@ func NewSkillRouter() *SkillRouter {
 			"web_search":       {"搜索", "查", "search", "find", "google", "百度"},
 			"tts":              {"朗读", "语音", "tts", "speak", "read aloud"},
 			"openclaw_proxy":   {"openclaw", "代理", "proxy"},
-			"mimicclaw_adapter": {"mimicclaw", "mimic"},
-			"nanoclaw_adapter":  {"nanoclaw", "nano"},
-			"picoclaw_adapter":  {"picoclaw", "pico"},
 		},
 		reCache: make(map[string]*regexp.Regexp),
 	}

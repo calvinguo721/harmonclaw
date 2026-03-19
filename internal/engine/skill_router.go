@@ -84,9 +84,6 @@ func defaultSkillEntries() []SkillEntry {
 		{ID: "doc_perceiver", Keywords: []string{"文档", "文件", "解析", "摘要", "总结", "doc", "file", "parse", "summary", "read"}, Description: "Document parsing", Priority: 70},
 		{ID: "tts", Keywords: []string{"朗读", "语音", "tts", "speak", "read aloud"}, Description: "Text to speech", Priority: 60},
 		{ID: "openclaw_proxy", Keywords: []string{"openclaw", "代理", "proxy"}, Description: "OpenClaw proxy", Priority: 50},
-		{ID: "mimicclaw_adapter", Keywords: []string{"mimicclaw", "mimic"}, Description: "MimicClaw", Priority: 40},
-		{ID: "nanoclaw_adapter", Keywords: []string{"nanoclaw", "nano"}, Description: "NanoClaw", Priority: 40},
-		{ID: "picoclaw_adapter", Keywords: []string{"picoclaw", "pico"}, Description: "PicoClaw", Priority: 40},
 	}
 }
 

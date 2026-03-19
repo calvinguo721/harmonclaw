@@ -84,7 +84,7 @@ func (s *Server) handleSovereigntyPost(w http.ResponseWriter, r *http.Request) {
 	if req.Mode == "" {
 		req.Mode = "airlock"
 	}
-	validModes := map[string]bool{"shadow": true, "airlock": true, "opensea": true}
+	validModes := map[string]bool{"shadow": true, "airlock": true, "opensea": true, "personal": true, "local": true, "connected": true}
 	if !validModes[req.Mode] {
 		writeError(w, r, http.StatusBadRequest, "invalid mode: "+req.Mode)
 		return

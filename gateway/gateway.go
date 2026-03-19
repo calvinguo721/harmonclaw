@@ -221,7 +221,7 @@ func authMiddleware(next http.Handler) http.Handler {
 
 func sovereigntyWall(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if SovereigntyMode == "shadow" && strings.HasPrefix(r.URL.Path, "/v1/") {
+		if (SovereigntyMode == "shadow" || SovereigntyMode == "personal") && strings.HasPrefix(r.URL.Path, "/v1/") {
 			Log(r.Context(), "SOVEREIGNTY shadow-block: %s %s", r.Method, r.URL.Path)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusForbidden)

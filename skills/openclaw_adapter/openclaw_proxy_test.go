@@ -12,6 +12,10 @@ import (
 
 func TestAdapter_Execute_Success(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/tools/invoke" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"result":{"answer":"ok"}}`))
 	}))
@@ -49,11 +53,24 @@ func TestAdapter_Execute_Unreachable(t *testing.T) {
 	}
 }
 
-func TestHcToOpenClaw(t *testing.T) {
-	hc := map[string]any{"text": "hi", "args": map[string]string{"a": "b"}}
-	oc := hcToOpenClaw(hc)
-	if oc["query"] != "hi" {
-		t.Errorf("query: want hi, got %v", oc["query"])
+func TestAdapter_RequestFormat(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"result":{"answer":"ok"}}`))
+	}))
+	defer srv.Close()
+	os.Setenv("HC_OPENCLAW_ENDPOINT", srv.URL)
+	defer os.Unsetenv("HC_OPENCLAW_ENDPOINT")
+
+	a := &Adapter{}
+	a.Execute(skills.SkillInput{TraceID: "t1", Text: "hi", Args: map[string]string{"a": "b"}})
+	if gotBody["tool"] != "openclaw" || gotBody["action"] != "invoke" {
+		t.Errorf("want tool=openclaw action=invoke, got %v", gotBody)
+	}
+	if gotBody["sessionKey"] != "t1" {
+		t.Errorf("sessionKey: want t1, got %v", gotBody["sessionKey"])
 	}
 }
 
