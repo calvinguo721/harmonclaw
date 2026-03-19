@@ -16,6 +16,7 @@ import (
 	"harmonclaw/llm"
 	"harmonclaw/sandbox"
 	"harmonclaw/viking"
+	hctest "harmonclaw/pkg/testutil"
 )
 
 func TestShutdown_GatewayShutdown(t *testing.T) {
@@ -24,7 +25,7 @@ func TestShutdown_GatewayShutdown(t *testing.T) {
 	provider, _ := llm.NewProvider()
 	mem, _ := viking.NewFileStore(t.TempDir())
 	guard := sandbox.NewWhitelist()
-	policies, _ := ironclaw.LoadPolicies("configs/policies.json")
+	policies, _ := ironclaw.LoadPolicies(hctest.ConfigPath("policies.json"))
 	governor.InitSecureClient(ledger, "airlock", []string{"*"})
 
 	gov := governor.New(ledger)
@@ -72,7 +73,7 @@ func TestShutdown_ConfigWatcherStop(t *testing.T) {
 }
 
 func TestShutdown_CronStop(t *testing.T) {
-	cs, err := architect.NewCronStore("configs/crons.json")
+	cs, err := architect.NewCronStore(hctest.ConfigPath("crons.json"))
 	if err != nil {
 		t.Skip("no crons.json")
 	}

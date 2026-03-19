@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 )
 
@@ -50,9 +51,10 @@ type QueryableLedger interface {
 }
 
 type FileLedger struct {
-	fpath  string
-	ch     chan LedgerEntry
-	closed atomic.Bool
+	fpath   string
+	ch      chan LedgerEntry
+	closed  atomic.Bool
+	drainWg sync.WaitGroup
 }
 
 // NewFileLedger creates a ledger. If ledgerDir is empty, uses ~/.harmonclaw/ledger.
@@ -72,6 +74,7 @@ func NewFileLedger(ledgerDir string) (*FileLedger, error) {
 		fpath: filepath.Join(ledgerDir, "ledger.jsonl"),
 		ch:    make(chan LedgerEntry, 64),
 	}
+	l.drainWg.Add(1)
 	go l.drain()
 	return l, nil
 }
@@ -93,9 +96,11 @@ func (l *FileLedger) Close() {
 		return
 	}
 	close(l.ch)
+	l.drainWg.Wait()
 }
 
 func (l *FileLedger) drain() {
+	defer l.drainWg.Done()
 	for entry := range l.ch {
 		data, err := json.Marshal(entry)
 		if err != nil {

@@ -19,9 +19,10 @@ func FuzzFirewall_Path(f *testing.F) {
 		if len(path) > 200 {
 			return
 		}
-		dir, _ := os.MkdirTemp("", "fuzz-*")
-		defer os.RemoveAll(dir)
-		ledger, err := viking.NewFileLedger(filepath.Join(dir, "ledger"))
+		dir := t.TempDir()
+		ledgerDir := filepath.Join(dir, "ledger")
+		os.MkdirAll(ledgerDir, 0755)
+		ledger, err := viking.NewFileLedger(ledgerDir)
 		if err != nil {
 			return
 		}

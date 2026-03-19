@@ -21,6 +21,7 @@ import (
 	"harmonclaw/sandbox"
 	"harmonclaw/skills"
 	"harmonclaw/viking"
+	hctest "harmonclaw/pkg/testutil"
 
 	_ "harmonclaw/skills/doc_perceiver"
 	_ "harmonclaw/skills/openclaw_adapter"
@@ -45,7 +46,7 @@ func TestSmoke(t *testing.T) {
 	os.MkdirAll(vikingDir, 0755)
 	mem, _ := viking.NewFileStore(vikingDir)
 	guard := sandbox.NewWhitelist()
-	policies, _ := ironclaw.LoadPolicies("configs/policies.json")
+	policies, _ := ironclaw.LoadPolicies(hctest.ConfigPath("policies.json"))
 	governor.InitSecureClient(ledger, "airlock", []string{"*"})
 	gateway.SovereigntyMode = "airlock"
 

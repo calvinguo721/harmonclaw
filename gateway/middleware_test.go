@@ -9,6 +9,7 @@ import (
 
 	"harmonclaw/governor"
 	"harmonclaw/viking"
+	hctest "harmonclaw/pkg/testutil"
 )
 
 func TestChain_RequestFlow(t *testing.T) {
@@ -52,7 +53,7 @@ func TestChain_ShadowMode(t *testing.T) {
 }
 
 func TestRateLimitMiddleware(t *testing.T) {
-	cfg, _ := governor.LoadRateLimitConfig("configs/ratelimit.json")
+	cfg, _ := governor.LoadRateLimitConfig(hctest.ConfigPath("ratelimit.json"))
 	rl := governor.NewTripleRateLimiter(cfg)
 	dir := filepath.Join(os.TempDir(), "harmonclaw-mw-rl")
 	os.MkdirAll(dir, 0755)
@@ -70,6 +71,3 @@ func TestRateLimitMiddleware(t *testing.T) {
 	}
 }
 
-func init() {
-	_ = os.Chdir
-}

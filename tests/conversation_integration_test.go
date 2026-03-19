@@ -22,6 +22,7 @@ import (
 	"harmonclaw/llm"
 	"harmonclaw/sandbox"
 	"harmonclaw/viking"
+	hctest "harmonclaw/pkg/testutil"
 
 	_ "harmonclaw/skills/doc_perceiver"
 	_ "harmonclaw/skills/web_search"
@@ -53,7 +54,7 @@ func TestConversationIntegration_FullFlow(t *testing.T) {
 	gateway.SovereigntyMode = "airlock"
 
 	guard := sandbox.NewWhitelist()
-	policies, _ := ironclaw.LoadPolicies("configs/policies.json")
+	policies, _ := ironclaw.LoadPolicies(hctest.ConfigPath("policies.json"))
 	gov := governor.New(ledger)
 	b := butler.NewWithOpts(provider, mem, ledger, vikingDir, "")
 	a := architect.New(guard, ledger)
@@ -126,9 +127,13 @@ func TestConversationIntegration_LLMFallback(t *testing.T) {
 
 	provider := newMockProvider(failLLM.URL)
 	dir := t.TempDir()
-	ledger, _ := viking.NewFileLedger(filepath.Join(dir, "ledger"))
+	ledgerDir := filepath.Join(dir, "ledger")
+	os.MkdirAll(ledgerDir, 0755)
+	ledger, _ := viking.NewFileLedger(ledgerDir)
 	defer ledger.Close()
-	mem, _ := viking.NewFileStore(filepath.Join(dir, "viking"))
+	vikingDir := filepath.Join(dir, "viking")
+	os.MkdirAll(vikingDir, 0755)
+	mem, _ := viking.NewFileStore(vikingDir)
 	governor.InitSecureClient(ledger, "airlock", []string{"*"})
 	gateway.SovereigntyMode = "airlock"
 
@@ -163,9 +168,13 @@ func TestConversationIntegration_Concurrent(t *testing.T) {
 
 	provider := newMockProvider(mockLLM.URL)
 	dir := t.TempDir()
-	ledger, _ := viking.NewFileLedger(filepath.Join(dir, "ledger"))
+	ledgerDir := filepath.Join(dir, "ledger")
+	os.MkdirAll(ledgerDir, 0755)
+	ledger, _ := viking.NewFileLedger(ledgerDir)
 	defer ledger.Close()
-	mem, _ := viking.NewFileStore(filepath.Join(dir, "viking"))
+	vikingDir := filepath.Join(dir, "viking")
+	os.MkdirAll(vikingDir, 0755)
+	mem, _ := viking.NewFileStore(vikingDir)
 	governor.InitSecureClient(ledger, "airlock", []string{"*"})
 	gateway.SovereigntyMode = "airlock"
 
