@@ -1,0 +1,9 @@
+.git
+.gitignore
+*.md
+harmonclaw
+harmonclaw-*
+logs/
+data/
+.env
+*.key

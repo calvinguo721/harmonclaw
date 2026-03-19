@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "path_rules": [
+    {"path": "/v1/health", "methods": ["GET"], "require_auth": false},
+    {"path": "/v1/version", "methods": ["GET"], "require_auth": false},
+    {"path": "/v1/chat/completions", "methods": ["POST"], "require_auth": false},
+    {"path": "/v1/skills/execute", "methods": ["POST"], "require_auth": false},
+    {"path": "/v1/architect/", "methods": ["GET", "POST"], "require_auth": false},
+    {"path": "/v1/governor/", "methods": ["GET", "POST", "PUT"], "require_auth": false},
+    {"path": "/v1/audit/", "methods": ["GET", "POST"], "require_auth": false},
+    {"path": "/v1/ledger/", "methods": ["GET"], "require_auth": false},
+    {"path": "/v1/butler/", "methods": ["GET", "POST"], "require_auth": false},
+    {"path": "/v1/viking/", "methods": ["GET", "POST"], "require_auth": false},
+    {"path": "/v1/edge/", "methods": ["GET", "POST"], "require_auth": false},
+    {"path": "/v1/token", "methods": ["POST"], "require_auth": false},
+    {"path": "/v1/auth/", "methods": ["POST"], "require_auth": false},
+    {"path": "/debug/vars", "methods": ["GET"], "require_auth": false}
+  ],
+  "blocked_paths": ["/admin", "/debug/pprof/", "/.env", "/.git/"],
+  "default_allow": true
+}

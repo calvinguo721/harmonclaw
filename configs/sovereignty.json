@@ -1,0 +1,25 @@
+{
+  "version": "2.0",
+  "rules": [
+    {"type": "mode", "match": "shadow", "action": "deny"},
+    {"type": "domain", "match": "*", "action": "allow", "when_mode": "opensea"},
+    {"type": "domain", "match": "api.deepseek.com", "action": "allow"},
+    {"type": "domain", "match": "localhost", "action": "allow"},
+    {"type": "domain", "match": "127.0.0.1", "action": "allow"},
+    {"type": "domain", "match": "*.searxng.org", "action": "allow"}
+  ],
+  "modes": {
+    "shadow": {
+      "description": "完全离线，无出网",
+      "allowed_domains": []
+    },
+    "airlock": {
+      "description": "受控出网，白名单",
+      "allowed_domains": ["api.deepseek.com", "localhost", "127.0.0.1", "*.searxng.org"]
+    },
+    "opensea": {
+      "description": "开放出网",
+      "allowed_domains": ["*"]
+    }
+  }
+}

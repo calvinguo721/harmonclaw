@@ -1,0 +1,6 @@
+{
+  "version": "1.0",
+  "global": { "rate": 100, "burst": 200 },
+  "per_user": { "rate": 10, "burst": 20 },
+  "per_skill": { "rate": 5, "burst": 10 }
+}

@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-mode="airlock">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>HarmonClaw</title>
+<style>
+:root{
+  --bg:#0a0a0c;--surf:#121218;--surf2:#1a1a22;--bdr:#2a2a35;
+  --gov:#c43d4a;--gov-glow:rgba(196,61,74,.2);
+  --butler:#3d7fc4;--butler-glow:rgba(61,127,196,.2);
+  --arch:#3dc46a;--arch-glow:rgba(61,196,106,.2);
+  --txt:#e0e0e8;--txt2:#8888a0;--txt3:#505068;
+  --ease:.35s cubic-bezier(.4,0,.2,1);
+}
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{font-family:"Segoe UI","Noto Sans SC",-apple-system,sans-serif;background:var(--bg);color:var(--txt);height:100vh;overflow:hidden}
+button{cursor:pointer;border:none;background:none;color:inherit;font:inherit}
+button:active{transform:scale(.96)}
+input,textarea{border:none;outline:none;background:none;color:inherit;font:inherit;resize:none}
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-thumb{background:var(--bdr);border-radius:2px}
+
+/* ══════ Top Status Bar ══════ */
+.topbar{
+  display:flex;align-items:center;justify-content:space-between;
+  height:40px;padding:0 1rem;background:var(--surf);border-bottom:1px solid var(--bdr);
+}
+.topbar-left{display:flex;align-items:center;gap:1rem}
+.nav-links{display:flex;gap:.5rem;font-size:.65rem}
+.nav-links a{color:var(--txt2);text-decoration:none;padding:.2rem .4rem;border-radius:4px;transition:color .15s,background .15s}
+.nav-links a:hover{color:var(--arch);background:var(--surf2)}
+.nav-links a[data-nav]{cursor:pointer}
+.skeleton{background:linear-gradient(90deg,var(--surf2) 25%,var(--bdr) 50%,var(--surf2) 75%);background-size:200% 100%;animation:skeleton 1.5s infinite;border-radius:4px}
+@keyframes skeleton{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.token-wrap{display:flex;align-items:center;gap:.3rem}
+.token-in{width:140px;padding:.2rem .4rem;font-size:.62rem;background:var(--surf2);border:1px solid var(--bdr);border-radius:4px}
+.token-in::placeholder{color:var(--txt3)}
+.btn-token{padding:.2rem .5rem;font-size:.6rem;background:var(--surf2);border:1px solid var(--bdr);border-radius:4px;color:var(--txt2)}
+.btn-token:hover{color:var(--arch)}
+.health-dot{width:8px;height:8px;border-radius:50%;background:var(--txt3)}
+.health-dot.ok{background:var(--arch);box-shadow:0 0 8px var(--arch)}
+.health-dot.err{background:var(--gov);box-shadow:0 0 8px var(--gov)}
+.topbar-ver{font-size:.7rem;color:var(--txt2);letter-spacing:.05em}
+.sov-sw{display:flex;border-radius:6px;overflow:hidden;border:1px solid var(--bdr)}
+.sv{padding:.25rem .8rem;font-size:.62rem;font-weight:700;letter-spacing:.06em;color:var(--txt2);transition:all .2s}
+.sv.active{color:#fff}
+.sv-s.active{background:#c43d4a}
+.sv-a.active{background:#3d7fc4}
+.sv-o.active{background:#3dc46a}
+
+/* ══════ Shell: Three Columns ══════ */
+.shell{display:flex;flex:1;height:calc(100vh - 40px);min-height:0}
+@media(max-width:900px){.shell{flex-direction:column}}
+
+/* ══════ Left: Governor (Red) ══════ */
+.gov{
+  width:200px;min-width:200px;display:flex;flex-direction:column;
+  border-right:1px solid var(--bdr);background:linear-gradient(180deg,var(--surf) 0%,#1a1214 100%);
+}
+@media(max-width:900px){.gov{width:100%;min-width:0;border-right:none;border-bottom:1px solid var(--bdr)}}
+.gov-header{padding:.8rem 1rem;display:flex;align-items:center;gap:.5rem;border-bottom:1px solid var(--bdr);position:relative}
+.gov-dot{width:8px;height:8px;border-radius:50%;background:var(--gov);box-shadow:0 0 6px var(--gov);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:.6}50%{opacity:1}}
+.gov-title{font-size:.6rem;letter-spacing:.12em;color:var(--gov);text-transform:uppercase}
+.gov-body{flex:1;overflow-y:auto;padding:.5rem}
+.gov-refresh{position:absolute;top:.6rem;right:.6rem;padding:.15rem .4rem;font-size:.5rem;background:var(--surf2);border-radius:4px;color:var(--txt2)}
+.gov-refresh:hover{color:var(--gov)}
+.stat-row{display:flex;justify-content:space-between;padding:.4rem .5rem;margin-bottom:.2rem;background:var(--surf2);border-radius:6px}
+.stat-k{font-size:.58rem;color:var(--txt2);text-transform:uppercase}
+.stat-v{font-size:.75rem;font-weight:700;color:var(--gov)}
+.ledger-title{font-size:.55rem;color:var(--txt3);padding:.5rem 0 .25rem;text-transform:uppercase}
+.ledger-list{display:flex;flex-direction:column;gap:.2rem}
+.le{font-size:.62rem;font-family:monospace;padding:.3rem .4rem;border-radius:4px;background:var(--surf2);border-left:3px solid var(--bdr)}
+.le[data-s="ok"],.le[data-s="success"]{border-left-color:var(--arch)}
+.le[data-s="fail"]{border-left-color:var(--gov)}
+.le span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ══════ Center: Butler (Blue) ══════ */
+.butler{flex:1;display:flex;flex-direction:column;min-width:0;background:linear-gradient(180deg,var(--surf) 0%,#12181a 100%)}
+.butler-header{padding:0 1rem;height:48px;display:flex;align-items:center;border-bottom:1px solid var(--bdr)}
+.butler-brand h1{font-size:.85rem;letter-spacing:.1em;color:var(--butler)}
+.chat-body{flex:1;overflow-y:auto;padding:1rem;display:flex;flex-direction:column;align-items:center}
+.chat-flow{display:flex;flex-direction:column;gap:.5rem;max-width:680px;width:100%;margin:0 auto}
+.chat-empty{text-align:center;padding:3rem 1rem;color:var(--txt2);font-size:.9rem;line-height:1.6}
+.chat-empty strong{color:var(--butler);display:block;margin-bottom:.5rem}
+.chat-loading{display:inline-flex;gap:.3rem;padding:.4rem .8rem;background:var(--surf2);border-radius:8px;font-size:.75rem;color:var(--txt2)}
+.chat-loading span{width:6px;height:6px;border-radius:50%;background:var(--butler);animation:bounce 1.4s infinite ease-in-out both}
+.chat-loading span:nth-child(1){animation-delay:-.32s}.chat-loading span:nth-child(2){animation-delay:-.16s}
+@keyframes bounce{0%,80%,100%{transform:scale(0)}40%{transform:scale(1)}}
+.msg{max-width:82%;padding:.6rem 1rem;font-size:.85rem;line-height:1.55;word-break:break-word;border-radius:12px;animation:msgIn .2s ease}
+.msg-user{align-self:flex-end;background:var(--butler);color:#fff;border-bottom-right-radius:4px}
+.msg-ai{align-self:flex-start;background:var(--surf2);border:1px solid var(--bdr);border-bottom-left-radius:4px}
+.msg-cursor{display:inline-block;width:2px;height:1em;background:var(--butler);animation:blink .6s infinite;vertical-align:text-bottom;margin-left:2px}
+.msg-id{font-size:.6rem;color:var(--txt3);margin-top:.3rem;cursor:pointer;text-decoration:underline}
+.msg-id:hover{color:var(--butler)}
+.trace-panel{position:fixed;inset:20%;background:var(--surf);border:2px solid var(--bdr);border-radius:12px;z-index:100;padding:1rem;overflow:auto;display:none}
+.trace-panel.show{display:block}
+.trace-close{float:right;cursor:pointer;font-size:1.2rem}
+.trace-chain{font-family:monospace;font-size:.7rem;margin-top:.5rem}
+@keyframes msgIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes blink{50%{opacity:0}}
+.chat-bar{display:flex;gap:.5rem;padding:.6rem 1rem;border-top:1px solid var(--bdr)}
+.chat-in{flex:1;padding:.5rem .8rem;border-radius:8px;font-size:.85rem;background:var(--bg);border:1px solid var(--bdr)}
+.chat-in:focus{border-color:var(--butler)}
+.btn-send{padding:.45rem 1.2rem;border-radius:8px;font-size:.75rem;font-weight:700;background:var(--butler);color:#fff}
+.btn-send:disabled{opacity:.4;cursor:default}
+
+/* ══════ Right: Architect (Green) ══════ */
+.arch{width:280px;min-width:280px;display:flex;flex-direction:column;border-left:1px solid var(--bdr);background:linear-gradient(180deg,var(--surf) 0%,#121a14 100%)}
+@media(max-width:900px){.arch{width:100%;min-width:0;border-left:none;border-top:1px solid var(--bdr)}}
+.arch-header{padding:.6rem .8rem;font-size:.58rem;letter-spacing:.1em;color:var(--arch);text-transform:uppercase;border-bottom:1px solid var(--bdr)}
+.arch-body{flex:1;overflow-y:auto;padding:.5rem}
+.skill-list{display:flex;flex-direction:column;gap:.25rem}
+.btn-skill{padding:.4rem .6rem;border-radius:6px;font-size:.7rem;text-align:left;background:var(--surf2);color:var(--txt2);border:1px solid transparent;transition:all .15s}
+.btn-skill:hover{background:var(--arch-glow);color:var(--arch);border-color:var(--arch)}
+.skill-health{font-size:.55rem;color:var(--txt3);margin-left:.3rem}
+.skill-health.ok{color:var(--arch)}
+.skill-health.err{color:var(--gov)}
+.arch-log{font-family:monospace;font-size:.65rem;line-height:1.6;color:var(--txt2);white-space:pre-wrap;word-break:break-all;margin-top:.5rem;padding:.4rem;background:var(--bg);border-radius:6px;max-height:100px;overflow-y:auto}
+.t-ok{color:var(--arch)}.t-err{color:var(--gov)}.t-p{color:var(--butler)}
+.arch-bar{display:flex;gap:.3rem;padding:.4rem .5rem;border-top:1px solid var(--bdr)}
+.arch-in{flex:1;padding:.3rem .5rem;border-radius:5px;font-size:.68rem;font-family:monospace;background:var(--bg);border:1px solid var(--bdr)}
+.arch-in:focus{border-color:var(--arch)}
+.btn-ex{padding:.3rem .6rem;border-radius:5px;font-size:.65rem;font-weight:700;background:var(--arch);color:var(--bg)}
+.arch-section{font-size:.55rem;color:var(--txt3);text-transform:uppercase;margin:.5rem 0 .25rem}
+.cron-list,.pipeline-list{font-size:.65rem;max-height:60px;overflow-y:auto}
+.tab-sw{display:flex;gap:.2rem}
+.tab-btn{padding:.15rem .4rem;font-size:.55rem;background:var(--surf2);border-radius:4px;color:var(--txt2)}
+.tab-btn.active{background:var(--arch);color:var(--bg)}
+.viking-panel{padding:.5rem;flex:1;overflow-y:auto}
+.viking-results div{padding:.2rem 0;border-bottom:1px solid var(--bdr)}
+
+/* ══════ Bottom Status Bar ══════ */
+.status-bar{display:flex;gap:1.5rem;padding:.25rem 1rem;font-size:.6rem;color:var(--txt3);background:var(--surf);border-top:1px solid var(--bdr)}
+.status-bar span{font-family:monospace}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-left">
+    <div class="health-dot" id="healthDot"></div>
+    <span class="topbar-ver" id="version">—</span>
+    <nav class="nav-links">
+      <a href="#gov">Governor</a><a href="#butler">Butler</a><a href="#arch">Architect</a><a href="#arch" data-nav="viking">Viking</a>
+      <a href="/static/health.html">Health</a>
+    </nav>
+    <div class="token-wrap">
+      <input class="token-in" id="tokenIn" placeholder="Token (Bearer)" type="password" autocomplete="off">
+      <button class="btn-token" id="btnToken" title="Get token">Get</button>
+    </div>
+  </div>
+  <div class="sov-sw">
+    <button class="sv sv-s" data-m="shadow">SHADOW</button>
+    <button class="sv sv-a active" data-m="airlock">AIRLOCK</button>
+    <button class="sv sv-o" data-m="opensea">OPENSEA</button>
+  </div>
+</div>
+
+<div class="shell">
+  <aside class="gov" id="gov">
+    <div class="gov-header"><div class="gov-dot"></div><span class="gov-title">Governor</span><button class="gov-refresh" id="govRefresh" title="Refresh">↻</button></div>
+    <div class="gov-body">
+      <div class="stat-row"><span class="stat-k">Mode</span><span class="stat-v" id="sMode">AIRLOCK</span></div>
+      <div class="stat-row"><span class="stat-k">Health</span><span class="stat-v" id="sHealth">—</span></div>
+      <div class="ledger-title">Recent Ledger</div>
+      <div class="ledger-list" id="ledger"><div class="skeleton" style="height:20px;margin-bottom:.2rem"></div><div class="skeleton" style="height:20px"></div></div>
+      <div class="ledger-title">限流</div>
+      <div class="stat-row"><span class="stat-k">状态</span><span class="stat-v" id="rateLimitStatus">—</span></div>
+      <div class="ledger-title">最近封禁</div>
+      <div class="ban-list" id="banList"></div>
+      <div class="ledger-title">审计查询</div>
+      <input class="stat-row" id="auditQuery" placeholder="resource 或 action_type" style="width:100%;padding:.3rem">
+      <button class="btn-token" id="auditBtn" style="margin-top:.2rem">Query</button>
+      <pre id="auditResult" style="font-size:.6rem;max-height:80px;overflow:auto;margin-top:.2rem"></pre>
+    </div>
+  </aside>
+
+  <main class="butler" id="butler">
+    <div class="butler-header" style="display:flex;align-items:center;gap:1rem">
+      <h1 class="butler-brand">Butler / Life</h1>
+      <select id="personaSelect" style="padding:.2rem .5rem;font-size:.7rem;background:var(--surf2);border:1px solid var(--bdr);border-radius:4px;color:var(--txt)">
+        <option value="default">default</option>
+      </select>
+    </div>
+    <div class="chat-body" id="chatBody">
+      <div class="chat-flow" id="chatFlow">
+        <div class="chat-empty" id="chatEmpty"><strong>HarmonClaw</strong> 主权 AI 助手 · 输入消息开始对话</div>
+      </div>
+    </div>
+    <div class="chat-bar">
+      <input class="chat-in" id="chatIn" placeholder="Say something..." autocomplete="off">
+      <button class="btn-send" id="btnSend">SEND</button>
+    </div>
+  </main>
+
+  <aside class="arch" id="arch">
+    <div class="arch-header" style="display:flex;justify-content:space-between;align-items:center">
+      <span>Architect / Viking</span>
+      <div class="tab-sw">
+        <button class="tab-btn active" data-tab="arch">Architect</button>
+        <button class="tab-btn" data-tab="viking">Viking</button>
+        <button class="tab-btn" data-tab="devices">Devices</button>
+      </div>
+    </div>
+    <div class="arch-body" id="archPanel">
+      <div class="arch-section">Registry (version+health)</div>
+      <div class="skill-list" id="skillList"></div>
+      <div class="arch-section">Pipeline</div>
+      <input id="pipelineInput" placeholder="input text" style="width:100%;padding:.3rem;font-size:.65rem;margin-bottom:.2rem">
+      <button class="btn-ex" id="pipelineBtn" style="margin-bottom:.5rem">Run Pipeline</button>
+      <div class="arch-section">Crons</div>
+      <div class="cron-list" id="cronList"></div>
+      <div class="arch-log" id="archLog"><span class="t-p">hclaw&gt;</span> ready</div>
+    </div>
+    <div class="arch-bar">
+      <input class="arch-in" id="archIn" placeholder="skill_id or text..." autocomplete="off">
+      <button class="btn-ex" id="btnEx">EXEC</button>
+    </div>
+    <div class="viking-panel" id="vikingPanel" style="display:none">
+      <div class="arch-section">Viking 搜索</div>
+      <input id="vikingSearchIn" placeholder="搜索关键词..." style="width:100%;padding:.3rem;font-size:.65rem;margin-bottom:.2rem">
+      <button class="btn-ex" id="vikingSearchBtn" style="margin-bottom:.5rem">搜索</button>
+      <div id="vikingSearchResults" class="viking-results" style="font-size:.65rem;max-height:80px;overflow-y:auto;margin-bottom:.5rem"></div>
+      <div class="arch-section">快照列表</div>
+      <div id="vikingSnapshots" class="viking-snapshots" style="font-size:.65rem;max-height:60px;overflow-y:auto"></div>
+      <div class="arch-section">GC 状态</div>
+      <div id="vikingGC" style="font-size:.6rem;color:var(--txt3)">—</div>
+    </div>
+    <div class="viking-panel" id="devicesPanel" style="display:none">
+      <div class="arch-section">边缘设备 (5s 刷新)</div>
+      <div id="edgeDevicesList" style="font-size:.65rem;max-height:200px;overflow-y:auto"></div>
+      <div class="arch-section">下发命令</div>
+      <select id="edgeDeviceSelect" style="width:100%;padding:.3rem;font-size:.65rem;margin-bottom:.2rem"><option value="">选择设备</option></select>
+      <select id="edgeCommandSelect" style="width:100%;padding:.3rem;font-size:.65rem;margin-bottom:.2rem"><option value="set_mode">主权模式切换</option></select>
+      <input id="edgeCommandPayload" placeholder='{"mode":"shadow"}' style="width:100%;padding:.3rem;font-size:.65rem;margin-bottom:.2rem">
+      <button class="btn-ex" id="edgeCommandBtn">下发</button>
+    </div>
+  </aside>
+</div>
+
+<div class="status-bar" id="statusBar">
+  <span>goroutine: <span id="statGoroutine">—</span></span>
+  <span>heap: <span id="statHeap">—</span></span>
+  <span>outbound: <span id="statOutbound">—</span></span>
+  <span>bus: <span id="statBus">—</span></span>
+</div>
+
+<div class="trace-panel" id="tracePanel">
+  <span class="trace-close" id="traceClose">&times;</span>
+  <div id="traceContent"></div>
+</div>
+
+<script>
+const $=s=>document.querySelector(s);
+const $$=s=>document.querySelectorAll(s);
+let history=[],busy=false,prevLedgerHash='';
+
+const TOKEN_KEY='harmonclaw_token';
+(function checkAuth(){
+  if(location.pathname==='/login.html'||location.pathname.endsWith('/login.html'))return;
+  if(localStorage.getItem(TOKEN_KEY))return;
+  if(location.pathname!==''&&location.pathname!=='/'&&location.pathname!=='/index.html')return;
+  fetch('/v1/ledger/latest?limit=1',{headers:{'Authorization':'Bearer x'}}).then(r=>{
+    if(r.status===401)location.href='/login.html';
+  }).catch(()=>{});
+})();
+
+const chatFlow=$('#chatFlow'),chatBody=$('#chatBody'),chatIn=$('#chatIn'),btnSend=$('#btnSend'),
+      ledger=$('#ledger'),skillList=$('#skillList'),archLog=$('#archLog'),archIn=$('#archIn'),
+      sMode=$('#sMode'),sHealth=$('#sHealth'),healthDot=$('#healthDot'),version=$('#version'),tokenIn=$('#tokenIn');
+function getToken(){return localStorage.getItem(TOKEN_KEY)||''}
+function setToken(t){localStorage.setItem(TOKEN_KEY,t||'');tokenIn.value=t||''}
+function authHeaders(){
+  const t=getToken();
+  const h={'Content-Type':'application/json'};
+  if(t)h['Authorization']='Bearer '+t;
+  return h;
+}
+tokenIn.value=getToken();
+tokenIn.addEventListener('change',()=>setToken(tokenIn.value.trim()));
+tokenIn.addEventListener('blur',()=>setToken(tokenIn.value.trim()));
+$('#btnToken').addEventListener('click',async()=>{
+  try{
+    const r=await fetch('/v1/token',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    const d=await r.json();
+    if(r.ok&&d.token){setToken(d.token);tokenIn.type='text';setTimeout(()=>tokenIn.type='password',2000)}
+    else{alert(d.error||'Failed')}
+  }catch(e){alert(e.message)}
+});
+
+/* Sovereignty: POST to backend */
+async function setSovereignty(mode){
+  try{
+    const r=await fetch('/v1/governor/sovereignty',{
+      method:'POST',headers:authHeaders(),
+      body:JSON.stringify({mode})
+    });
+    const d=await r.json();
+    if(r.ok){document.documentElement.setAttribute('data-mode',mode);sMode.textContent=mode.toUpperCase()}
+    else{alert(d.error||'Failed')}
+  }catch(e){alert(e.message)}
+}
+$$('.sv').forEach(b=>b.addEventListener('click',()=>{
+  $$('.sv').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active');
+  setSovereignty(b.dataset.m);
+}));
+
+/* Health + Version + Sovereignty sync */
+async function refreshHealth(){
+  try{
+    const [h,s]=await Promise.all([
+      fetch('/v1/health',{headers:authHeaders()}).then(r=>r.json()),
+      fetch('/v1/governor/sovereignty',{headers:authHeaders()}).then(r=>r.json())
+    ]);
+    const ok=h.overall==='healthy';
+    healthDot.className='health-dot '+(ok?'ok':'err');
+    sHealth.textContent=ok?'OK':'DEGRADED';
+    version.textContent=h.version||'—';
+    if(s.mode){document.documentElement.setAttribute('data-mode',s.mode);sMode.textContent=s.mode.toUpperCase();
+      $$('.sv').forEach(x=>{x.classList.toggle('active',x.dataset.m===s.mode)});
+    }
+    if(Array.isArray(h.architect?.registered_skills)){renderSkillsFromHealth(h.architect.registered_skills)}
+    refreshPersona();refreshCrons();refreshBanList();refreshRateLimitStatus();refreshVikingSnapshots();
+  }catch(_){healthDot.className='health-dot err';sHealth.textContent='OFF'}
+}
+async function refreshBanList(){
+  try{const r=await fetch('/v1/audit/query?action_type=firewall_ban&limit=5',{headers:authHeaders()});
+  const d=await r.json();const el=$('#banList');el.innerHTML='';const arr=Array.isArray(d)?d:(d.results||[]);arr.slice(0,5).forEach(e=>{const div=document.createElement('div');div.className='le';div.setAttribute('data-s','fail');div.innerHTML='<span>'+esc(e.resource||e.client_ip||'-')+'</span>';el.appendChild(div)})}catch(_){}
+}
+async function refreshRateLimitStatus(){
+  try{$('#rateLimitStatus').textContent='OK'}catch(_){$('#rateLimitStatus').textContent='—'}
+}
+async function refreshPersona(){
+  try{const r=await fetch('/v1/butler/persona',{headers:authHeaders()});
+  const d=await r.json();if(r.ok&&d.personas){const sel=$('#personaSelect');const prev=sel.value;sel.innerHTML='';(d.personas||[]).forEach(p=>{const o=document.createElement('option');o.value=p;o.textContent=p;o.selected=p===d.default;sel.appendChild(o)});if(prev&&prev!==sel.value)sel.value=prev}catch(_){}
+}
+$('#personaSelect').addEventListener('change',async()=>{
+  const p=$('#personaSelect').value;if(!p)return;
+  try{const r=await fetch('/v1/butler/persona',{method:'POST',headers:authHeaders(),body:JSON.stringify({default:p})});
+  if(!r.ok){const d=await r.json();alert(d.error||'Failed')}}catch(e){alert(e.message)}
+});
+$$('.tab-btn').forEach(b=>b.addEventListener('click',()=>{
+  $$('.tab-btn').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active');
+  const t=b.dataset.tab;
+  const ap=$('#archPanel'),ab=$('.arch-bar'),vp=$('#vikingPanel');
+  if(ap){ap.style.display=t==='arch'?'block':'none'}
+  if(ab){ab.style.display=t==='arch'?'flex':'none'}
+  if(vp){vp.style.display=t==='viking'?'block':'none';if(t==='viking')refreshVikingSnapshots()}
+  const dp=$('#devicesPanel');if(dp){dp.style.display=t==='devices'?'block':'none';if(t==='devices')refreshEdgeDevices()}
+}));
+async function refreshEdgeDevices(){
+  try{const r=await fetch('/v1/edge/devices',{headers:authHeaders()});
+  const d=await r.json();const el=$('#edgeDevicesList');const sel=$('#edgeDeviceSelect');if(!el)return;
+  el.innerHTML='';sel.innerHTML='<option value="">选择设备</option>';
+  (Array.isArray(d)?d:[]).forEach(dev=>{
+    const div=document.createElement('div');div.className='le';div.setAttribute('data-s',dev.status==='online'?'ok':'fail');
+    div.innerHTML='<span>'+esc(dev.id)+' | '+esc(dev.arch)+'/'+esc(dev.os)+' | '+esc(dev.status)+' | '+esc(dev.last_seen||'')+'</span>';
+    el.appendChild(div);
+    const o=document.createElement('option');o.value=dev.id;o.textContent=dev.id;sel.appendChild(o);
+  });
+  if($('#devicesPanel')?.style?.display==='block')setTimeout(refreshEdgeDevices,5000)}catch(_){}
+}
+$('#edgeCommandBtn')?.addEventListener('click',async()=>{
+  const dev=$('#edgeDeviceSelect')?.value,cmd=$('#edgeCommandSelect')?.value,pl=$('#edgeCommandPayload')?.value;
+  if(!dev||!cmd){alert('选择设备');return}
+  let payload={};try{payload=JSON.parse(pl||'{}')}catch(e){alert('Invalid JSON')}
+  try{const r=await fetch('/v1/edge/command',{method:'POST',headers:authHeaders(),body:JSON.stringify({device_id:dev,command:cmd,payload})});
+  if(r.ok)alert('已下发');else{alert((await r.json()).error||'Failed')}}catch(e){alert(e.message)}
+});
+async function refreshVikingSnapshots(){
+  try{const r=await fetch('/v1/viking/snapshots',{headers:authHeaders()});
+  const d=await r.json();const el=$('#vikingSnapshots');if(!el)return;el.innerHTML='';
+  (d.snapshots||[]).forEach(s=>{const div=document.createElement('div');div.textContent=esc(typeof s==='string'?s:(s.id||s.ID||s.name||''));el.appendChild(div)})}catch(_){}
+}
+$('#vikingSearchBtn')?.addEventListener('click',async()=>{
+  const q=$('#vikingSearchIn')?.value?.trim();if(!q)return;
+  try{const r=await fetch('/v1/viking/search?q='+encodeURIComponent(q),{headers:authHeaders()});
+  const d=await r.json();const el=$('#vikingSearchResults');if(!el)return;el.innerHTML='';
+  (d.results||[]).forEach(id=>{const div=document.createElement('div');div.textContent=esc(id);el.appendChild(div)})}catch(_){}
+});
+async function refreshCrons(){
+  try{const r=await fetch('/v1/architect/crons',{headers:authHeaders()});
+  const d=await r.json();if(r.ok&&d.crons){const el=$('#cronList');el.innerHTML='';(d.crons||[]).forEach(c=>{const div=document.createElement('div');div.textContent=(c.id||c.ID||'')+' '+esc(c.expr||c.Expr||'');el.appendChild(div)})}}catch(_){}
+}
+async function refreshArchitectSkills(){
+  try{const r=await fetch('/v1/architect/skills',{headers:authHeaders()});
+  const d=await r.json();if(r.ok&&d.skills){renderSkillsWithMeta(d.skills)}}catch(_){}
+}
+function renderSkillsFromHealth(skills){
+  skillList.innerHTML='';
+  (skills||[]).forEach(sk=>{
+    const b=document.createElement('button');
+    b.className='btn-skill';b.innerHTML=esc(sk);b.dataset.sk=sk;
+    b.addEventListener('click',()=>showSkillExecModal(sk));
+    skillList.appendChild(b);
+  });
+}
+function renderSkillsWithMeta(skills){
+  skillList.innerHTML='';
+  (skills||[]).forEach(s=>{
+    const b=document.createElement('button');
+    b.className='btn-skill';
+    const id=s.id||s.ID||'?';
+    const v=s.version||s.Version||'';
+    const h=s.healthy?'ok':'err';
+    b.innerHTML=esc(id)+' <span class="skill-health '+h+'">'+esc(v)+'</span>';
+    b.dataset.sk=id;
+    b.addEventListener('click',()=>showSkillExecModal(id));
+    skillList.appendChild(b);
+  });
+}
+let currentSkillId='';
+function showSkillExecModal(skillId){
+  let m=$('#skillExecModal');
+  if(!m){const div=document.createElement('div');div.id='skillExecModal';div.className='trace-panel';div.innerHTML='<span class="trace-close" id="skillExecClose">&times;</span><h3>Execute: <span id="skillExecName"></span></h3><textarea id="skillExecArgs" placeholder="{}" rows="4" style="width:100%;font-family:monospace;margin:.5rem 0"></textarea><input id="skillExecInput" placeholder="input text" style="width:100%;padding:.4rem;margin-bottom:.5rem"><button class="btn-ex" id="skillExecBtn">EXECUTE</button><pre id="skillExecResult" style="margin-top:.5rem;max-height:200px;overflow:auto"></pre>';document.body.appendChild(div);$('#skillExecClose').onclick=()=>div.classList.remove('show');$('#skillExecBtn').onclick=()=>{doSkillExec(currentSkillId);div.classList.remove('show')};m=div}
+  currentSkillId=skillId;
+  $('#skillExecName').textContent=skillId;
+  $('#skillExecArgs').value='{}';
+  $('#skillExecInput').value='';
+  $('#skillExecResult').textContent='';
+  $('#skillExecModal').classList.add('show');
+}
+async function doSkillExec(skillId){
+  const argsEl=$('#skillExecArgs'),inputEl=$('#skillExecInput'),resultEl=$('#skillExecResult');
+  let args={};
+  try{const raw=JSON.parse(argsEl.value||'{}');args=Object.fromEntries(Object.entries(raw).map(([k,v])=>[k,String(v)]))}catch(e){resultEl.textContent='Invalid JSON: '+e.message;return}
+  resultEl.textContent='Running...';
+  try{
+    const r=await fetch('/v1/skills/execute',{
+      method:'POST',headers:authHeaders(),
+      body:JSON.stringify({skill_id:skillId,text:inputEl.value,input:inputEl.value,args})
+    });
+    const d=await r.json();
+    resultEl.textContent=JSON.stringify(d,null,2);
+    if(r.ok)tlog('<span class="t-ok">[OK] '+skillId+' '+esc(JSON.stringify(d).slice(0,80))+'</span>');
+    else tlog('<span class="t-err">[ERR] '+esc(d.error||d.reason||'')+'</span>');
+  }catch(e){resultEl.textContent=e.message;tlog('<span class="t-err">[NET] '+esc(e.message)+'</span>')}
+}
+$('#govRefresh')?.addEventListener('click',()=>{refreshHealth();pollLedger();refreshBanList();refreshRateLimitStatus()});
+$$('.nav-links a[data-nav]').forEach(a=>{a.addEventListener('click',e=>{e.preventDefault();const t=a.dataset.nav;document.getElementById('arch')?.scrollIntoView({behavior:'smooth'});$$('.tab-btn').forEach(x=>{x.classList.toggle('active',x.dataset.tab===t)});const ap=$('#archPanel'),vp=$('#vikingPanel'),dp=$('#devicesPanel'),ab=$('.arch-bar');if(ap)ap.style.display=t==='arch'?'block':'none';if(ab)ab.style.display=t==='arch'?'flex':'none';if(vp){vp.style.display=t==='viking'?'block':'none';if(t==='viking')refreshVikingSnapshots()}if(dp){dp.style.display=t==='devices'?'block':'none';if(t==='devices')refreshEdgeDevices()}})});
+setInterval(refreshHealth,4000);refreshHealth();
+setInterval(refreshArchitectSkills,8000);refreshArchitectSkills();
+
+$('#auditBtn').addEventListener('click',async()=>{
+  const q=$('#auditQuery').value.trim();
+  const params=new URLSearchParams();
+  if(q){params.set('resource',q);params.set('action_type',q)}
+  try{const r=await fetch('/v1/audit/query?'+params,{headers:authHeaders()});
+  const d=await r.json();$('#auditResult').textContent=JSON.stringify(d,null,2)}catch(e){$('#auditResult').textContent=e.message}
+});
+
+$('#pipelineBtn').addEventListener('click',async()=>{
+  const input=$('#pipelineInput').value.trim();
+  const skills=skillList.querySelectorAll('.btn-skill');
+  const stages=[];skills.forEach((b,i)=>{if(i<3)stages.push({skill_id:b.dataset.sk,args:{}})});
+  if(stages.length===0){tlog('<span class="t-err">No skills - wait for registry load</span>');return}
+  try{const r=await fetch('/v1/architect/pipeline/execute',{method:'POST',headers:authHeaders(),body:JSON.stringify({stages,input:input||'test'})});
+  const d=await r.json();tlog('<span class="t-ok">Pipeline: '+esc(JSON.stringify(d).slice(0,120))+'</span>')}catch(e){tlog('<span class="t-err">'+esc(e.message)+'</span>')}
+});
+
+async function refreshStatusBar(){
+  try{const r=await fetch('/debug/vars',{headers:authHeaders()});
+  const d=await r.json();$('#statGoroutine').textContent=d.goroutine_count??'—';$('#statHeap').textContent=formatBytes(d.heap_alloc_bytes??0);$('#statOutbound').textContent=d.outbound_http_total??'—';$('#statBus').textContent='—'}catch(_){$('#statGoroutine').textContent='—'}}
+function formatBytes(n){if(typeof n!=='number')return n;if(n<1024)return n+'B';if(n<1048576)return (n/1024).toFixed(1)+'KB';return (n/1048576).toFixed(1)+'MB'}
+setInterval(refreshStatusBar,5000);refreshStatusBar();
+
+/* Chat */
+chatIn.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}});
+btnSend.addEventListener('click',send);
+
+async function send(){
+  const t=chatIn.value.trim();
+  if(!t||busy)return;
+  busy=true;btnSend.disabled=true;chatIn.value='';
+  addBubble('user',t);
+  history.push({role:'user',content:t});
+  const el=addBubble('ai','');
+  const cur=document.createElement('span');
+  cur.className='msg-cursor';el.appendChild(cur);
+  showChatLoading();
+
+  try{
+    const r=await fetch('/v1/chat/completions',{
+      method:'POST',headers:authHeaders(),
+      body:JSON.stringify({messages:history,stream:true})
+    });
+    if(!r.ok){hideChatLoading();const d=await r.json();cur.remove();el.textContent='[Error] '+(d.error||r.statusText);return}
+    if(r.headers.get('content-type')?.includes('text/event-stream')){
+      const reader=r.body.getReader();const decoder=new TextDecoder();let buf='',full='',aid='';
+      while(true){
+        const{done,value}=await reader.read();
+        if(done)break;
+        buf+=decoder.decode(value,{stream:true});
+        const parts=buf.split('\n\n');buf=parts.pop()||'';
+        for(const block of parts){
+          const m=block.match(/^data: (.+)$/m);
+          if(!m)continue;
+          const d=m[1];
+          if(d==='[DONE]')break;
+          try{const j=JSON.parse(d);aid=j.action_id||aid;const c=j.choices?.[0]?.delta?.content;if(c){full+=c;el.textContent=full;el.appendChild(cur);chatBody.scrollTop=chatBody.scrollHeight}}catch(_){}
+        }
+      }
+      cur.remove();hideChatLoading();
+      if(aid){const idEl=document.createElement('div');idEl.className='msg-id';idEl.textContent='#'+aid;idEl.title='Click to trace';idEl.onclick=()=>showTrace(aid);el.appendChild(idEl)}
+      history.push({role:'assistant',content:full});
+    }else{
+      const d=await r.json();
+      const c=d.choices?.[0]?.message?.content||'(empty)';
+      const aid=d.action_id||'';
+      history.push({role:'assistant',content:c});
+      hideChatLoading();
+      await typeOut(el,c,cur,aid);
+    }
+  }catch(e){hideChatLoading();cur.remove();el.textContent='[Network] '+e.message}
+  finally{busy=false;btnSend.disabled=false}
+}
+
+function addBubble(role,text){
+  const empty=$('#chatEmpty');
+  if(empty)empty.remove();
+  const el=document.createElement('div');
+  el.className='msg msg-'+role;
+  el.textContent=text;
+  chatFlow.appendChild(el);
+  chatBody.scrollTop=chatBody.scrollHeight;
+  return el;
+}
+function showChatLoading(){
+  const empty=$('#chatEmpty');
+  if(empty)empty.remove();
+  let ld=$('#chatLoading');
+  if(!ld){ld=document.createElement('div');ld.id='chatLoading';ld.className='chat-loading';ld.innerHTML='<span></span><span></span><span></span>';chatFlow.appendChild(ld)}
+  ld.style.display='inline-flex';chatBody.scrollTop=chatBody.scrollHeight;
+}
+function hideChatLoading(){const ld=$('#chatLoading');if(ld)ld.style.display='none'}
+
+async function typeOut(el,text,cur,actionId){
+  el.textContent='';
+  const sp=Math.max(4,Math.min(25,800/text.length));
+  for(let i=0;i<text.length;i++){
+    el.textContent+=text[i];
+    el.appendChild(cur);
+    chatBody.scrollTop=chatBody.scrollHeight;
+    if(i%2===0)await new Promise(r=>setTimeout(r,sp));
+  }
+  cur.remove();
+  if(actionId){
+    const idEl=document.createElement('div');
+    idEl.className='msg-id';
+    idEl.textContent='#'+actionId;
+    idEl.title='Click to trace';
+    idEl.onclick=()=>showTrace(actionId);
+    el.appendChild(idEl);
+  }
+}
+
+async function showTrace(actionId){
+  try{
+    const r=await fetch('/v1/ledger/trace?action_id='+encodeURIComponent(actionId),{headers:authHeaders()});
+    const d=await r.json();
+    const panel=$('#tracePanel');
+    const content=$('#traceContent');
+    if(r.ok&&d.chain){
+      content.innerHTML='<strong>Trace: '+esc(actionId)+'</strong><pre class="trace-chain">'+esc(JSON.stringify(d.chain,null,2))+'</pre>';
+    }else{content.innerHTML='<span class="t-err">'+esc(d.error||'No trace')+'</span>'}
+    panel.classList.add('show');
+  }catch(e){$('#traceContent').innerHTML='<span class="t-err">'+esc(e.message)+'</span>';$('#tracePanel').classList.add('show')}
+}
+$('#traceClose').addEventListener('click',()=>$('#tracePanel').classList.remove('show'));
+
+/* Ledger */
+async function pollLedger(){
+  try{
+    const r=await fetch('/v1/ledger/latest?limit=20',{headers:authHeaders()});
+    if(!r.ok)return;
+    const entries=await r.json();
+    if(!Array.isArray(entries))return;
+    const hash=JSON.stringify(entries);
+    if(hash!==prevLedgerHash){renderLedger(entries);prevLedgerHash=hash}
+  }catch(_){}
+}
+function renderLedger(entries){
+  ledger.innerHTML='';
+  entries.slice(-12).forEach(e=>{
+    const d=document.createElement('div');
+    d.className='le';d.setAttribute('data-s',e.result||'ok');
+    const ts=e.timestamp?e.timestamp.substring(11,19):'--:--';
+    d.innerHTML='<span>'+ts+' '+esc(e.action_type||'-')+'</span><span>'+esc(e.result||'-')+'</span>';
+    ledger.appendChild(d);
+  });
+}
+setInterval(pollLedger,2500);pollLedger();
+
+/* Skill Execute */
+$('#btnEx').addEventListener('click',execSkill);
+archIn.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();execSkill()}});
+
+async function execSkill(){
+  const sk=archIn.value.trim();
+  if(!sk)return;
+  archIn.value='';
+  tlog('<span class="t-p">hclaw&gt;</span> exec '+esc(sk));
+  try{
+    const r=await fetch('/v1/skills/execute',{
+      method:'POST',headers:authHeaders(),
+      body:JSON.stringify({skill_id:sk,skill_name:sk,text:sk,input:sk})
+    });
+    const d=await r.json();
+    if(r.status===403){
+      tlog('<span class="t-err">[BLOCKED] '+esc(d.reason||d.error||'')+'</span>');
+    }else if(r.ok){
+      tlog('<span class="t-ok">[OK] '+esc(d.status||'')+' '+esc(JSON.stringify(d).slice(0,80))+'</span>');
+    }else{tlog('<span class="t-err">[ERR] '+esc(d.error||r.statusText)+'</span>')}
+  }catch(e){tlog('<span class="t-err">[NET] '+esc(e.message)+'</span>')}
+}
+
+function tlog(h){archLog.innerHTML+='\n'+h;archLog.scrollTop=archLog.scrollHeight}
+function esc(s){const d=document.createElement('div');d.textContent=String(s);return d.innerHTML}
+
+/* TTS AudioContext playback */
+let audioCtx=null;
+function playBase64Audio(base64){
+  if(!audioCtx)audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+  const bin=atob(base64);const buf=new ArrayBuffer(bin.length);const view=new Uint8Array(buf);
+  for(let i=0;i<bin.length;i++)view[i]=bin.charCodeAt(i);
+  audioCtx.decodeAudioData(buf).then(decoded=>{
+    const src=audioCtx.createBufferSource();src.buffer=decoded;src.connect(audioCtx.destination);src.start(0);
+  }).catch(e=>console.warn('TTS decode:',e));
+}
+</script>
+</body>
+</html>

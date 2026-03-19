@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "timeout_sec": 30,
+  "max_retries": 3,
+  "max_concurrent": 4,
+  "retry_base_ms": 500
+}
