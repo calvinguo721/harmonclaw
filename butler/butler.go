@@ -114,6 +114,7 @@ func (b *Butler) HandleChat(req llm.Request) (llm.Response, error) {
 		last := req.Messages[len(req.Messages)-1]
 		b.memory.SaveMemory(user, sessionID, last.Role, last.Content)
 	}
+	messages = injectWebSearchContext(messages)
 	req.Messages = messages
 	resp, err := b.llm.Chat(req)
 	if err != nil {
@@ -161,11 +162,12 @@ func (b *Butler) HandleChatStream(req llm.Request) (ch <-chan string, sessionID 
 				messages = prependSystem(messages, pc.SystemPrompt)
 			}
 		}
-		req.Messages = messages
 	} else if len(req.Messages) > 0 {
 		last := req.Messages[len(req.Messages)-1]
 		b.memory.SaveMemory(user, sessionID, last.Role, last.Content)
 	}
+	messages = injectWebSearchContext(messages)
+	req.Messages = messages
 	ch, err = b.llm.ChatStream(req)
 	return ch, sessionID, err
 }

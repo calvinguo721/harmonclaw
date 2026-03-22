@@ -6,6 +6,7 @@ var approvedSkills = map[string]bool{
 	"doc_perceiver":     true,
 	"openclaw_proxy":    true,
 	"web_search":        true,
+	"brave_search":      true,
 	"tts":               true,
 }
 

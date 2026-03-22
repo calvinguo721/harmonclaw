@@ -13,7 +13,9 @@ import (
 	"strings"
 	"time"
 
+	"harmonclaw/configs"
 	"harmonclaw/governor"
+	"harmonclaw/pkg/bravesearch"
 	"harmonclaw/skills"
 )
 
@@ -84,11 +86,10 @@ func (s *Search) doExecute(input skills.SkillInput) skills.SkillOutput {
 
 	var out skills.SkillOutput
 	apiURL := getSearchAPIURL()
-	searxURL := getSearXNGURL()
 	if apiURL != "" {
 		out = s.searchViaAPI(input, q, apiURL, start)
-	} else if searxURL != "" {
-		out = s.searchViaSearXNG(input, q, searxURL, start)
+	} else if k := getBraveAPIKey(); k != "" {
+		out = s.searchViaBrave(input, q, k, start)
 	} else {
 		out = s.searchViaDuckDuckGo(input, q, getDuckDuckGoURL(), start)
 	}
@@ -105,9 +106,12 @@ func getSearchAPIURL() string {
 	return ""
 }
 
-func getSearXNGURL() string {
-	if u := strings.TrimSpace(os.Getenv("HC_SEARCH_SEARXNG")); u != "" {
-		return strings.TrimSuffix(u, "/")
+func getBraveAPIKey() string {
+	if k := strings.TrimSpace(os.Getenv("BRAVE_API_KEY")); k != "" {
+		return k
+	}
+	if c := configs.Get(); c != nil {
+		return strings.TrimSpace(c.BraveAPIKey)
 	}
 	return ""
 }
@@ -168,48 +172,21 @@ func (s *Search) searchViaAPI(input skills.SkillInput, q, apiURL string, start t
 	return out
 }
 
-func (s *Search) searchViaSearXNG(input skills.SkillInput, q string, baseURL string, start time.Time) skills.SkillOutput {
-	u := baseURL + "/search?q=" + url.QueryEscape(q) + "&format=json"
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, u, nil)
+func (s *Search) searchViaBrave(input skills.SkillInput, q, apiKey string, start time.Time) skills.SkillOutput {
+	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
+	defer cancel()
+	items, err := bravesearch.Search(ctx, governor.SecureClient(), apiKey, q, maxResults, "")
 	if err != nil {
 		return skills.SkillOutput{TraceID: input.TraceID, Status: "error", Error: err.Error()}
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; HarmonClaw/1.0)")
-
-	client := governor.SecureClient()
-	resp, err := client.Do(req)
+	norm := make([]searchResult, 0, len(items))
+	for _, it := range items {
+		norm = append(norm, searchResult{Title: it.Title, URL: it.URL, Snippet: it.Snippet})
+	}
+	outData, err := json.Marshal(norm)
 	if err != nil {
 		return skills.SkillOutput{TraceID: input.TraceID, Status: "error", Error: err.Error()}
 	}
-	defer resp.Body.Close()
-
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return skills.SkillOutput{TraceID: input.TraceID, Status: "error", Error: err.Error()}
-	}
-
-	var sr struct {
-		Results []struct {
-			Title   string `json:"title"`
-			URL     string `json:"url"`
-			Content string `json:"content"`
-		} `json:"results"`
-	}
-	if err := json.Unmarshal(data, &sr); err != nil {
-		return skills.SkillOutput{TraceID: input.TraceID, Status: "error", Error: fmt.Sprintf("searxng parse: %v", err)}
-	}
-
-	top := maxResults
-	if len(sr.Results) < top {
-		top = len(sr.Results)
-	}
-	items := make([]searchResult, 0, top)
-	for i := 0; i < top; i++ {
-		r := sr.Results[i]
-		items = append(items, searchResult{Title: r.Title, URL: r.URL, Snippet: r.Content})
-	}
-	outData, _ := json.Marshal(items)
-
 	out := skills.SkillOutput{TraceID: input.TraceID, Status: "ok", Data: outData}
 	out.Metrics.Ms = time.Since(start).Milliseconds()
 	out.Metrics.Bytes = len(outData)

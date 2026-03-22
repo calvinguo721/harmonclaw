@@ -11,7 +11,7 @@
   },
   "connected": {
     "network": "filtered",
-    "whitelist": ["api.deepseek.com", "api.openai.com"],
+    "whitelist": ["api.deepseek.com", "api.openai.com", "api.search.brave.com"],
     "audit": true,
     "ledger": true
   }

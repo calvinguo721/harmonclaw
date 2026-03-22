@@ -18,6 +18,7 @@ type Config struct {
 	DataDir         string `json:"data_dir"`
 	LogLevel        string `json:"log_level"`
 	DeepSeekAPIKey  string `json:"deepseek_api_key"`
+	BraveAPIKey     string `json:"brave_api_key"`
 	AuthEnabled     bool   `json:"auth_enabled"`
 	PoliciesPath   string `json:"policies_path"`
 	SovereigntyPath string `json:"sovereignty_path"`
@@ -46,6 +47,7 @@ func Load(jsonPath string) (*Config, error) {
 		DataDir:         defaultDataDir(),
 		LogLevel:        "info",
 		DeepSeekAPIKey:  os.Getenv("DEEPSEEK_API_KEY"),
+		BraveAPIKey:     os.Getenv("BRAVE_API_KEY"),
 		AuthEnabled:     os.Getenv("HC_AUTH_ENABLED") == "true",
 		PoliciesPath:    "configs/policies.json",
 		SovereigntyPath: "configs/sovereignty.json",
@@ -62,6 +64,7 @@ func Load(jsonPath string) (*Config, error) {
 				DataDir         string `json:"data_dir"`
 				LogLevel        string `json:"log_level"`
 				SovereigntyMode string `json:"sovereignty_mode"`
+				BraveAPIKey     string `json:"brave_api_key"`
 			}
 			if json.Unmarshal(data, &overlay) == nil {
 				if overlay.Version != "" {
@@ -102,6 +105,9 @@ func Load(jsonPath string) (*Config, error) {
 	}
 	if k := os.Getenv("DEEPSEEK_API_KEY"); k != "" {
 		c.DeepSeekAPIKey = k
+	}
+	if k := os.Getenv("BRAVE_API_KEY"); k != "" {
+		c.BraveAPIKey = k
 	}
 
 	if err := c.Validate(); err != nil {

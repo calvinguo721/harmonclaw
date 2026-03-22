@@ -87,7 +87,7 @@ go run ./cmd/harmonclaw/
 | configs/llm.json | LLM 路由 |
 | configs/tts.json | TTS 配置 |
 
-环境变量：`HC_PORT`、`HC_DATA_DIR`、`HC_TLS_CERT`、`HC_TLS_KEY`、`DEEPSEEK_API_KEY`、`HC_SEARCH_API`、`HC_SEARCH_SEARXNG`、`HC_TTS_ENDPOINT`
+环境变量：`HC_PORT`、`HC_DATA_DIR`、`HC_TLS_CERT`、`HC_TLS_KEY`、`DEEPSEEK_API_KEY`、`BRAVE_API_KEY`、`HC_BRAVE_CONFIG`、`HC_SEARCH_API`、`HC_TTS_ENDPOINT`（可选测试用 `HC_BRAVE_API_BASE`）
 
 ## 铁律概要（.cursorrules）
 

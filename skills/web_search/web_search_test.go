@@ -119,24 +119,26 @@ func TestSearch_CacheHit(t *testing.T) {
 	}
 }
 
-func TestSearch_ViaSearXNG(t *testing.T) {
+func TestSearch_ViaBrave(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/search" {
-			t.Errorf("want /search, got %s", r.URL.Path)
+		if r.URL.Path != "/res/v1/web/search" {
+			t.Errorf("want /res/v1/web/search, got %s", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"results":[{"title":"SearX","url":"https://sx.com","content":"SearXNG result"}]}`))
+		w.Write([]byte(`{"web":{"results":[{"title":"BraveHit","url":"https://brave.example","description":"desc"}]}}`))
 	}))
 	defer srv.Close()
 
 	os.Unsetenv("HC_SEARCH_API")
-	os.Setenv("HC_SEARCH_SEARXNG", srv.URL)
-	defer os.Unsetenv("HC_SEARCH_SEARXNG")
+	os.Setenv("HC_BRAVE_API_BASE", srv.URL)
+	os.Setenv("BRAVE_API_KEY", "test-key")
+	defer os.Unsetenv("HC_BRAVE_API_BASE")
+	defer os.Unsetenv("BRAVE_API_KEY")
 
 	s := &Search{}
 	out := s.Execute(skills.SkillInput{
-		TraceID: "sx1",
-		Text:    "searxng query",
+		TraceID: "br1",
+		Text:    "brave query",
 		Args:    map[string]string{"sovereignty": "airlock"},
 	})
 	if out.Status != "ok" {
@@ -146,7 +148,7 @@ func TestSearch_ViaSearXNG(t *testing.T) {
 	if json.Unmarshal(out.Data, &results) != nil {
 		t.Fatal("invalid JSON")
 	}
-	if len(results) != 1 || results[0].Title != "SearX" || results[0].Snippet != "SearXNG result" {
+	if len(results) != 1 || results[0].Title != "BraveHit" || results[0].Snippet != "desc" {
 		t.Errorf("got %+v", results)
 	}
 }
