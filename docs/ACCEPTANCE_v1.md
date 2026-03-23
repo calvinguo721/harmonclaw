@@ -84,9 +84,20 @@
 > ✅ **v3.0 — Edge TTS 语音输出**
 >
 > - **依赖库**：`github.com/difyz9/edge-tts-go` **v0.0.3**（纯 Go，经 `gorilla/websocket` 连接微软 Edge TTS；**riscv64 + `CGO_ENABLED=0` 交叉编译通过**）。
-> - **出网与主权**：合成前调用 **`governor.AllowOutboundHost("api.msedgeservices.com")`**，与 **`SecureClient`** 使用相同白名单/审计逻辑（WSS 无法走 `RoundTrip`，故用语义等价的宿主校验）；`configs/sovereignty.json` 已加入 **`api.msedgeservices.com`**、**`speech.platform.bing.com`**。
+> - **出网与主权**：合成前对 Edge 相关主机做 **`AllowOutboundHost`**（与 **`SecureClient`** 同规则）；v4.0.1 起同时校验 **`speech.platform.bing.com`** 与 **`api.msedgeservices.com`**（见文末 v4.0.1 callout）。
 > - **新增文件**：`skills/edge_tts.go`，`api/tts_handler.go`，`gateway/edge_tts.go`，`configs/edge_tts.json`。
 > - **修改文件**：`governor/client.go`（`AllowOutboundHost` + `RoundTrip` 复用），`cmd/harmonclaw/main.go`，`configs/sovereignty.json`，`configs/ironclaw_rules.json`，`configs/skill-quotas.json`，`configs/policies.json`，`sandbox/sandbox.go`，`.env.example`，`.cursorrules`，`go.mod` / `go.sum`。
 > - **HTTP**：`POST /v1/audio/speech`（OpenAI 兼容子集），`Content-Type: audio/mpeg`；技能 **`edge_tts`** 已注册（JSON 返回 base64 MP3）。
 > - **本地 MP3 验证**：需在可访问微软 TTS 的网络下执行 `go run ./cmd/harmonclaw` 后，用文档中的 `Invoke-WebRequest` 拉取 `test.mp3`（本 CI 环境未自动跑通外网合成）。
 > - **提交**：message `feat(tts): edge tts voice output via WebSocket`；**commit hash** 以 `git log -1 --oneline` 为准。
+
+---
+
+> ✅ **v4.0.1 — Edge TTS 主权白名单（双域名校验）**
+>
+> - **问题**：仅校验 `api.msedgeservices.com`，与现场 WSS 实际域名 `speech.platform.bing.com` 不一致，导致 `AllowOutboundHost` 误拒或白名单不全时报错。
+> - **修改文件**：`skills/edge_tts.go`（`EdgeTTSOutboundHosts` + `allowEdgeTTSOutbound()` 对 **`speech.platform.bing.com`** 与 **`api.msedgeservices.com`** 依次校验）、`configs/sovereignty.json`（白名单顺序调整，两域名均保留）。
+> - **edge-tts-go v0.0.3 源码内域名**：`internal/constants` 中 WSS/语音列表为 **`api.msedgeservices.com`**；`VoiceHeaders` 含 **`speech.platform.bing.com`**（Authority）；现场/新版本可能走 bing WSS，故两域名均放行。
+> - **交叉编译**：`GOOS=linux GOARCH=riscv64 CGO_ENABLED=0 go build ./...` 已通过（本地）。
+> - **本地 MP3**：需在可访问微软服务的网络下用 `Invoke-WebRequest` 自测（本环境未自动跑外网）。
+> - **提交**：message `fix(tts): add speech.platform.bing.com to sovereignty whitelist`（以 `git log -1 --oneline` 为准）。

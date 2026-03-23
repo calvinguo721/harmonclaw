@@ -22,8 +22,21 @@ func init() {
 	Register(NewEdgeTTSSkill(""))
 }
 
-// EdgeTTSWSSHost is the hostname used for Edge TTS WebSocket (must match sovereignty whitelist).
-const EdgeTTSWSSHost = "api.msedgeservices.com"
+// EdgeTTSOutboundHosts are Microsoft endpoints used by edge-tts-go (WSS may use bing; voice list / older paths use msedgeservices).
+// All must appear in configs/sovereignty.json connected whitelist.
+var EdgeTTSOutboundHosts = []string{
+	"speech.platform.bing.com",
+	"api.msedgeservices.com",
+}
+
+func allowEdgeTTSOutbound() error {
+	for _, h := range EdgeTTSOutboundHosts {
+		if err := governor.AllowOutboundHost(h); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 // Default voice IDs (Edge neural)
 const (
@@ -137,7 +150,7 @@ func (e *EdgeTTSSkill) Synthesize(ctx context.Context, text, voice string) ([]by
 	if strings.TrimSpace(text) == "" {
 		return nil, fmt.Errorf("edge_tts: empty text")
 	}
-	if err := governor.AllowOutboundHost(EdgeTTSWSSHost); err != nil {
+	if err := allowEdgeTTSOutbound(); err != nil {
 		return nil, err
 	}
 	if strings.TrimSpace(voice) == "" {
