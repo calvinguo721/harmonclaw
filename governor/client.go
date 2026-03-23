@@ -79,48 +79,63 @@ type sovereigntyTransport struct {
 	next http.RoundTripper
 }
 
+func stripHostPort(host string) string {
+	if idx := strings.Index(host, ":"); idx >= 0 {
+		return host[:idx]
+	}
+	return host
+}
+
+// AllowOutboundHost applies the same host allowlist as SecureClient (when a ledger is configured).
+// Use this before non-HTTP outbound calls (e.g. WebSocket) that cannot use SecureClient.RoundTrip.
+func AllowOutboundHost(host string) error {
+	if clientLedger == nil {
+		return nil
+	}
+	host = stripHostPort(host)
+	if host == "" {
+		return nil
+	}
+	if sc := GetSovereigntyConfig(); sc != nil {
+		resolved := ResolveMode(sc.Mode)
+		if resolved == string(ModePersonal) || resolved == string(ModeLocal) || resolved == string(ModeConnected) {
+			if !sc.IsAllowed(host) {
+				clientLedger.Record(viking.LedgerEntry{
+					OperatorID: "governor",
+					ActionType: sc.Mode + ":outbound_blocked",
+					Resource:   host,
+					Result:     "fail",
+					ClientIP:   "",
+					Timestamp:  time.Now().Format(time.RFC3339),
+					ActionID:   "",
+				})
+				return errors.New("sovereignty: " + host + " not allowed in " + sc.Mode)
+			}
+			return nil
+		}
+	}
+	clientMu.RLock()
+	mode, domains := clientMode, clientDomains
+	clientMu.RUnlock()
+	if !domainAllowedLocked(host, mode, domains) {
+		clientLedger.Record(viking.LedgerEntry{
+			OperatorID: "governor",
+			ActionType: mode + ":outbound_blocked",
+			Resource:   host,
+			Result:     "fail",
+			ClientIP:   "",
+			Timestamp:  time.Now().Format(time.RFC3339),
+			ActionID:   "",
+		})
+		return errors.New("sovereignty: domain " + host + " not in whitelist")
+	}
+	return nil
+}
+
 func (t *sovereigntyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if clientLedger != nil && req.URL != nil {
-		host := req.URL.Host
-		if idx := strings.Index(host, ":"); idx >= 0 {
-			host = host[:idx]
-		}
-		// Prefer new three-tier config (personal/local/connected)
-		if sc := GetSovereigntyConfig(); sc != nil {
-			resolved := ResolveMode(sc.Mode)
-			if resolved == string(ModePersonal) || resolved == string(ModeLocal) || resolved == string(ModeConnected) {
-				if !sc.IsAllowed(host) {
-					clientLedger.Record(viking.LedgerEntry{
-						OperatorID: "governor",
-						ActionType: sc.Mode + ":outbound_blocked",
-						Resource:   host,
-						Result:     "fail",
-						ClientIP:   "",
-						Timestamp:  time.Now().Format(time.RFC3339),
-						ActionID:   "",
-					})
-					return nil, errors.New("sovereignty: " + host + " not allowed in " + sc.Mode)
-				}
-				if t.next == nil {
-					t.next = http.DefaultTransport
-				}
-				return t.next.RoundTrip(req)
-			}
-		}
-		clientMu.RLock()
-		mode, domains := clientMode, clientDomains
-		clientMu.RUnlock()
-		if !domainAllowedLocked(host, mode, domains) {
-			clientLedger.Record(viking.LedgerEntry{
-				OperatorID: "governor",
-				ActionType: mode + ":outbound_blocked",
-				Resource:   host,
-				Result:     "fail",
-				ClientIP:   "",
-				Timestamp:  time.Now().Format(time.RFC3339),
-				ActionID:   "",
-			})
-			return nil, errors.New("sovereignty: domain " + host + " not in whitelist")
+		if err := AllowOutboundHost(req.URL.Host); err != nil {
+			return nil, err
 		}
 	}
 	if t.next == nil {

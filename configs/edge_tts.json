@@ -1,0 +1,9 @@
+{
+  "default_voice": "zh-CN-XiaoxiaoNeural",
+  "voices": {
+    "zh_female": "zh-CN-XiaoxiaoNeural",
+    "zh_male": "zh-CN-YunxiNeural",
+    "en_female": "en-US-AriaNeural",
+    "en_male": "en-US-GuyNeural"
+  }
+}

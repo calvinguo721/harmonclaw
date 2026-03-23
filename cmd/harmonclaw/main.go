@@ -247,6 +247,7 @@ func main() {
 	rlCfg, _ := governor.LoadRateLimitConfig("configs/ratelimit.json")
 	srv.SetRateLimiter(governor.NewTripleRateLimiter(rlCfg))
 	srv.SetFirewall(governor.NewFirewall(ledger))
+	srv.RegisterEdgeTTSSpeech(skills.NewEdgeTTSSkill(""))
 	certFile := os.Getenv("HC_TLS_CERT")
 	keyFile := os.Getenv("HC_TLS_KEY")
 	if certFile != "" && keyFile != "" {

@@ -78,3 +78,15 @@
 ### PR
 
 - 请在本地执行两次 commit（`feat(search): ...` / `feat(llm): ...`）后推送并创建 PR：`feat: brave search direct + provider abstraction`。PR 链接需在 GitHub 上由你创建后填写。
+
+---
+
+> ✅ **v3.0 — Edge TTS 语音输出**
+>
+> - **依赖库**：`github.com/difyz9/edge-tts-go` **v0.0.3**（纯 Go，经 `gorilla/websocket` 连接微软 Edge TTS；**riscv64 + `CGO_ENABLED=0` 交叉编译通过**）。
+> - **出网与主权**：合成前调用 **`governor.AllowOutboundHost("api.msedgeservices.com")`**，与 **`SecureClient`** 使用相同白名单/审计逻辑（WSS 无法走 `RoundTrip`，故用语义等价的宿主校验）；`configs/sovereignty.json` 已加入 **`api.msedgeservices.com`**、**`speech.platform.bing.com`**。
+> - **新增文件**：`skills/edge_tts.go`，`api/tts_handler.go`，`gateway/edge_tts.go`，`configs/edge_tts.json`。
+> - **修改文件**：`governor/client.go`（`AllowOutboundHost` + `RoundTrip` 复用），`cmd/harmonclaw/main.go`，`configs/sovereignty.json`，`configs/ironclaw_rules.json`，`configs/skill-quotas.json`，`configs/policies.json`，`sandbox/sandbox.go`，`.env.example`，`.cursorrules`，`go.mod` / `go.sum`。
+> - **HTTP**：`POST /v1/audio/speech`（OpenAI 兼容子集），`Content-Type: audio/mpeg`；技能 **`edge_tts`** 已注册（JSON 返回 base64 MP3）。
+> - **本地 MP3 验证**：需在可访问微软 TTS 的网络下执行 `go run ./cmd/harmonclaw` 后，用文档中的 `Invoke-WebRequest` 拉取 `test.mp3`（本 CI 环境未自动跑通外网合成）。
+> - **提交**：message `feat(tts): edge tts voice output via WebSocket`；**commit hash** 以 `git log -1 --oneline` 为准。

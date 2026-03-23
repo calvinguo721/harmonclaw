@@ -4,6 +4,7 @@
     {"path": "/v1/health", "methods": ["GET"], "require_auth": false},
     {"path": "/v1/version", "methods": ["GET"], "require_auth": false},
     {"path": "/v1/chat/completions", "methods": ["POST"], "require_auth": false},
+    {"path": "/v1/audio/speech", "methods": ["POST"], "require_auth": false},
     {"path": "/v1/skills/execute", "methods": ["POST"], "require_auth": false},
     {"path": "/v1/architect/", "methods": ["GET", "POST"], "require_auth": false},
     {"path": "/v1/governor/", "methods": ["GET", "POST", "PUT"], "require_auth": false},

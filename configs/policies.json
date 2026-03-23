@@ -4,5 +4,6 @@
   {"skill_id": "openclaw_proxy", "allowed_users": [], "max_qps": 10, "require_token": false, "min_classification": "public"},
   {"skill_id": "web_search", "allowed_users": [], "max_qps": 10, "require_token": false, "min_classification": "public"},
   {"skill_id": "brave_search", "allowed_users": [], "max_qps": 10, "require_token": false, "min_classification": "public"},
+  {"skill_id": "edge_tts", "allowed_users": [], "max_qps": 5, "require_token": false, "min_classification": "public"},
   {"skill_id": "tts", "allowed_users": [], "max_qps": 10, "require_token": false, "min_classification": "public"}
 ]

@@ -60,6 +60,7 @@ go run ./cmd/harmonclaw/
 | GET | /v1/butler/persona | 人格列表与默认 |
 | POST | /v1/butler/persona | 切换人格 |
 | POST | /v1/chat/completions | 对话（支持 stream:true SSE） |
+| POST | /v1/audio/speech | Edge TTS：JSON `input`/`voice` → `audio/mpeg`（OpenAI 兼容子集） |
 | POST | /v1/skills/execute | 技能执行 |
 | POST | /v1/engram/inject | 记忆注入 |
 | GET | /v1/ledger/latest?limit=N | 最新审计记录（默认 20） |

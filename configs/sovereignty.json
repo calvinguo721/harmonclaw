@@ -11,7 +11,7 @@
   },
   "connected": {
     "network": "filtered",
-    "whitelist": ["api.deepseek.com", "api.openai.com", "api.search.brave.com"],
+    "whitelist": ["api.deepseek.com", "api.openai.com", "api.search.brave.com", "api.msedgeservices.com", "speech.platform.bing.com"],
     "audit": true,
     "ledger": true
   }

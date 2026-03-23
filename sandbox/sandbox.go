@@ -7,6 +7,7 @@ var approvedSkills = map[string]bool{
 	"openclaw_proxy":    true,
 	"web_search":        true,
 	"brave_search":      true,
+	"edge_tts":          true,
 	"tts":               true,
 }
 
